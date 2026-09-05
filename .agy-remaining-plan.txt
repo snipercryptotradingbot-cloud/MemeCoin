@@ -1,0 +1,39 @@
+Work inside E:/FreeMemeCoin only.
+
+1) Chat UX and fallback hardening
+- app/chat/page.jsx: keep current UI, but make it actually reflect backend state when available.
+  Fetch /api/chat/rooms on mount, show loading/error states, and use returned room data when present.
+  Keep moniker input, no wallet connection required.
+  Ensure room creation POST to /api/chat/rooms is validated and surfaced with error text on failure.
+- deploy/chat/index.html: keep offline behavior robust. If fetch to /api/chat/* fails more than once, show a clear retry/offline message plus last known room list from localStorage/local state if any.
+- worker.js unknown API behavior: keep current /api/chat, /api/admin, /api/analytics behavior, but make sure unknown /api/* paths return JSON 404 instead of opaque asset fallback.
+
+2) Route fallback consistency check
+- Verify that /, /create, /explore, /liquidity, /dashboard, /chat, /token/__mint__ all serve either the real React app or the self-contained fallback HTML with unified light navbar.
+- If any fallback still has stale old nav classes/styles, make it consistent with the current light navbar shell standard.
+
+3) Windows operational harness
+- Add package.json scripts only if package.json exists and is writable:
+  "stage-deploy": "node scripts/stage-deploy.js || echo manual-staging"
+  "stage-deploy:full": "npm run build || echo build-blocked && node scripts/stage-deploy.js || echo manual-staging && wrangler deploy"
+- If package.json is missing or risky, do not add it. Just add scripts/stage-deploy.js if not present:
+  - Copy deploy-ready output into deploy/ if a local dist/.next/out exists.
+  - Print clear instructions when build is blocked on Windows.
+
+4) Observability
+- Improve chat page error UX states: show retry button and preserve room list when API is unreachable.
+- Keep all existing bindings in wrangler.jsonc. Do not remove Durable Object, D1, or assets bindings.
+
+5) Verification checklist
+- Before finishing, run these curl commands and capture output:
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/api/chat/rooms
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/api/chat/general
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/create
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/explore
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/liquidity
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/dashboard
+  curl -s https://mememint.snipercryptotradingbot.workers.dev/chat
+
+6) AGY_RESULTS.md
+- Write E:/FreeMemeCoin/AGY_RESULTS.md with exact changed files, verification outputs, and any blocked items.

@@ -1,0 +1,41 @@
+# Wrangler/local artifacts
+.wrangler/
+node_modules/
+.next/
+.deploy/
+
+# Environment / Secrets
+.env
+.env.local
+.env.production
+.env.development
+.dev.vars
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Anchor
+target/
+Cargo.lock
+.anchor/
+
+# OpenNext
+.open-next/
+.next-backup/
+
+# Temp
+*.mjs.bak
+*.bak
+
+# Build artifacts
+testlink/
+deploy/
+.next-backup/
+.open-next/

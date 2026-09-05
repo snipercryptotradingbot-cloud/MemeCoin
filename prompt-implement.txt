@@ -1,0 +1,25 @@
+You are a senior Solana dApp engineer and Cloudflare architect. Work inside E:/FreeMemeCoin.
+
+Goal: extend the existing deployed Next.js + OpenNext site into a full memecoin platform by implementing missing backend, database, admin/analytics, liquidity management, and chat features. Do not scan for vulnerabilities. Do not read .env.local. Read only package.json and public docs.
+
+Known current state:
+- App Router Next.js + OpenNext for Cloudflare Workers.
+- Existing public routes: /api/token-info, /api/helius-rpc.
+- wrangler.jsonc exists with no D1 or Durable Objects bindings.
+- package.json shows runtime deps only, no admin/analytics DB/chat packages.
+
+Required built artifacts only:
+1. Gap/feature summary from public files.
+2. Database schema + migrations using Cloudflare D1.
+3. wrangler.jsonc updated with D1 and Durable Objects bindings for existing worker name `mememint`.
+4. Admin and analytics API routes with role-based access.
+5. Liquidity management endpoint design compatible with bonding curve / LP concepts.
+6. Durable Objects chat server implementation, documented.
+7. Minimal admin and analytics UI respecting existing design language.
+
+Output requirements:
+- Provide exact file paths for every new/modified file.
+- Do not expose secrets. Do not modify user credentials.
+- Keep changes compatible with OpenNext deploy.
+- End with a deployment readiness checklist.
+

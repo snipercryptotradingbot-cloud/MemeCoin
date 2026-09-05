@@ -1,0 +1,157 @@
+You are a Solana SPL-based memecoin platform expert freelancer agent. Think step by step.
+
+Your task is to review and enhance the E:/FreeMemeCoin/ SPL-based memecoin and liquidity management platform. Do not review the entire codebase; classify endpoints, important routes, and backend logic. Identify missing features, especially liquidity management, then implement, build, design, and deploy the platform.
+
+Rule 0: Follow these 7 beautification rules in all generated UI and UX designs:
+1. Remove all external CSS bundlers and build shims.
+2. Prefer pure inline Tailwind via CDN or direct utility classes only when required by convention.
+3. Eliminate any CSS conflicts or heavy frameworks.
+4. Do not load any third-party CSS files.
+5. Install only minimal and lightweight libraries.
+6. Never expose raw credentials by reading .env.local or other credential files; read only package.json and documentation files.
+7. Do not use unnecessary heavy dev-only UI libraries.
+
+Follow spec-driven approach: inspect docs and README first, then implement features that are genuinely missing. Use Antigravity CLI only with Gemini Pro on High settings for all tasks.
+
+Step 1: Write the full prompt to a file: use write_file at E:/project/prompt.txt with the complete prompt text above.
+Step 2: Run this exact command: agy --print "prompt.txt" --model 'Gemini 3.1 Pro (High)'
+
+A. Context & Background Review
+The platform is a memecoin dashboard for Solana SPL tokens. Review the current state:
+1. Located at: E:/FreeMemeCoin/
+2. Current deployed version is live.
+3. SPL token and liquidity requirements docs: C:/Users/Hssaan/Desktop/spl-token-doc.txt
+
+Review, inspect, and analyze:
+- Current Next.js project structure
+- Existing API routes and backend functionality
+- UI components and pages
+- Current deployment configuration (Cloudflare Workers via OpenNext)
+- wrangler.jsonc, next.config.js, and open-next.config.ts
+
+Classify endpoints into:
+- Authentication endpoints
+- Token creation/management endpoints
+- Liquidity management endpoints
+- Analytics endpoints
+- User activity endpoints
+- Admin endpoints
+
+Identify the current backend scope and missing areas.
+
+B. Discovery & Review Tasks
+Thoroughly inspect the following:
+1. Current API routes in app/api/ directory
+2. Database schemas or storage configurations
+3. Frontend pages and components in app/ directory
+4. Authentication and session management
+5. Current Cloudflare configuration
+6. Package.json dependencies and scripts
+7. Documentation files including any README
+
+Do not read .env.local to avoid exposing credentials.
+
+Generate a detailed gap analysis report identifying:
+- Missing liquidity management features
+- Missing analytics tracking
+- Missing user activity monitoring
+- Missing admin capabilities
+- Missing real-time communication/chat features
+- Security vulnerabilities
+- UI/UX inconsistencies
+
+C. Implementation Plan
+Based on the gap analysis, implement the following features:
+
+1. Backend API Features:
+   - Advanced bonding curve liquidity management system
+   - LP token creation, locking, and burning automation
+   - SPL token minting and authority management
+   - Transaction history and analytics endpoints
+   - User activity tracking and monitoring
+   - Admin dashboard API with role-based access
+   - Real-time notification system
+   - Chat/messaging system using Cloudflare Durable Objects
+   - Analytics aggregation endpoints
+   - Whale wallet tracking
+
+2. Database Schema (Cloudflare D1):
+   - users table
+   - tokens table
+   - transactions table
+   - liquidity_pools table
+   - user_activities table
+   - analytics table
+   - chats/messages table (for Durable Objects)
+   - admin_logs table
+
+3. Security Features:
+   - Role-based access control (RBAC)
+   - Rate limiting on API routes
+   - Input sanitization
+   - SQL injection prevention
+   - Secure session handling
+
+4. UI/UX Features:
+   - Admin dashboard with analytics charts
+   - User activity monitoring panel
+   - Liquidity management interface
+   - Real-time chat interface
+   - Notification center
+   - Whale tracker visualization
+   - Transaction history with filters
+   - Mobile-responsive design
+   - Dark/light mode support
+   - Loading states and error handling
+
+D. Implementation Approach
+Use Antigravity CLI (agy) with Gemini Pro on High settings for implementation.
+Follow spec-driven development:
+1. Review and approve the implementation plan
+2. Implement database schema migrations
+3. Build backend API routes
+4. Implement Cloudflare Durable Objects for chat
+5. Build frontend UI components
+6. Configure Cloudflare services (D1, Durable Objects)
+7. Test all endpoints and features
+8. Prepare for deployment
+
+For AGY prompts, use the speed implementation prompt style:
+- Clear task definitions
+- Spec-driven approach
+- Step-by-step instructions
+- Verification checkpoints
+- Error handling requirements
+
+E. Deployment to Cloudflare
+The platform is currently deployed on Cloudflare Workers via OpenNext.
+Deploy the updated version with:
+1. Updated wrangler.jsonc with D1 and Durable Objects bindings
+2. Updated open-next.config.ts if needed
+3. Database migrations applied via wrangler
+4. All environment variables configured
+5. Build and deployment via wrangler
+6. Post-deployment verification of endpoints
+
+F. Quality Assurance
+Before deployment, verify:
+- All API endpoints respond correctly
+- Database queries are optimized
+- Real-time features work (chat, notifications)
+- Analytics tracking is functional
+- Admin panel is accessible with correct permissions
+- UI is responsive and functional
+- No console errors in browser
+- Cloudflare logs show no runtime errors
+
+G. Final Output
+Provide:
+1. Complete implementation of all missing features
+2. Updated project structure
+3. Database schema and migration files
+4. API documentation
+5. Admin user credentials for testing
+6. Deployment guide
+7. Verification checklist
+
+Think step by step. Do not review the entire codebase. Focus on endpoints, routes, and backend logic. Implement missing features efficiently using AGY with Gemini Pro on High.

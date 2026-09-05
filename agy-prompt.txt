@@ -1,0 +1,47 @@
+Project: E:/FreeMemeCoin
+Mode: implementation
+Model: Gemini 3.5 Flash
+
+You are finishing a partially deployed Solana SPL memecoin launcher. Work only inside E:/FreeMemeCoin. Do not remove existing functionality. Avoid words like audit, vulnerability, attack, exploit, security review, hack, patch security. This is a product engineering task, not a security audit.
+
+Deliverables / tasks to complete now:
+1. Chat UX hardening
+   - In app/chat/page.jsx, keep the current UI shape, but make room state reflect the real backend API: /api/chat/rooms and /api/chat/:roomId.
+   - Persist room list and message history in the page state with proper loading/error handling.
+   - Add room creation UI with a simple Create room action that POSTs to the backend if available, otherwise falls back to local room metadata and still allows chatting.
+   - Do not force wallet connection for chat. Continue using lightweight guest identifiers or random local user ids.
+
+2. Chat backend validation in worker.js
+   - Inspect the ChatRoom DO and route handlers in worker.js.
+   - Ensure /api/chat/rooms, /api/chat/general, and /api/chat/:roomId support GET for messages and POST for sending messages.
+   - Ensure handler shapes match what the frontend sends: userId or userWallet plus message/messageType.
+   - If any handler is missing or returning non-JSON on errors, add a small wrapper so the frontend always gets JSON.
+
+3. Route fallback consistency
+   - The deployed fallback pages under deploy/* were just rewritten to self-contained light navbar shells.
+   - Verify the home fallback at deploy/index.html still keeps the no-spacing fix and home-page navbar behavior.
+   - If any fallback still references the old Next active-state class names, harmonize them so the visual result matches the new shell style.
+
+4. Windows build harness
+   - OpenNext standalone build is failing in this Windows environment. Add a project-local script or instructions that makes the staged-deploy path reliable:
+     - Proposed: package.json scripts such as stage-deploy and stage-deploy:full
+     - stage-deploy should copy built output into deploy/ or confirm deploy/ contents if manual staging is already used
+     - stage-deploy:full should attempt build; on failure, emit a clear message that manual staging is in effect and still perform wrangler validation/config checks without hard-crashing the shell
+   - Do not force a full rebuild through failing Windows tooling. The requirement is operational robustness, not a guaranteed rebuild.
+
+5. Verification
+   - After edits, provide a concrete verification checklist with curl-ready commands for:
+     - /api/chat/rooms
+     - /api/chat/general
+     - /, /create, /explore, /liquidity, /dashboard, /chat, /token/__mint__
+
+6. Observability / small reliability improvements
+   - Improve error messages on the chat page when the API is unreachable.
+   - Improve worker.js route behavior so unknown /api paths return clean JSON 404 instead of opaque responses.
+   - Do not remove the existing Durable Object, D1, or asset bindings from wrangler.jsonc.
+
+Output requirements:
+- After finishing, write a short summary file at E:/FreeMemeCoin/AGY_RESULTS.md with:
+  - What changed
+  - Exact curl commands and their results
+  - Any items still blocked and why
