@@ -3,17 +3,6 @@ name: Deploy Cloudflare
 on:
   push:
     branches: [dev, qa, main]
-    paths:
-      - 'app/**'
-      - 'worker.js'
-      - 'wrangler.jsonc'
-      - 'wrangler.render.jsonc'
-      - 'scripts/gen-wrangler-config.mjs'
-      - 'migrations/**'
-      - 'open-next.config.ts'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
   workflow_dispatch:
     inputs:
       environment:
