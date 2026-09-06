@@ -65,15 +65,6 @@ pub fn handler(ctx: Context<SwapTokens>, token_amount: u64, min_sol_out: u64) ->
     curve.token_reserves = new_token_reserves;
     curve.total_swaps = curve.total_swaps.checked_add(1).ok_or(BondingCurveError::MathOverflow)?;
 
-    let sol_vault_bump = curve.sol_vault_bump;
-    let curve_address = curve.key();
-    // SOL vault is a separate PDA ([SOL_VAULT_SEED, curve]) and must be signed
-    // with its own seeds when SOL is paid out of it.
-    let vault_signer_seeds: &[&[&[u8]]] = &[&[
-        SOL_VAULT_SEED,
-        curve_address.as_ref(),
-        &[sol_vault_bump],
-    ]];
 
     // Transfer tokens from user to vault (user signs their own transfer)
     token_interface::transfer_checked(
@@ -90,19 +81,9 @@ pub fn handler(ctx: Context<SwapTokens>, token_amount: u64, min_sol_out: u64) ->
         ctx.accounts.mint.decimals,
     )?;
 
-    // Transfer SOL from vault to user (PDA signs)
-    let ix = anchor_lang::system_program::Transfer {
-        from: ctx.accounts.sol_vault.to_account_info(),
-        to: ctx.accounts.user.to_account_info(),
-    };
-    anchor_lang::system_program::transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.system_program.to_account_info(),
-            ix,
-            vault_signer_seeds,
-        ),
-        sol_out,
-    )?;
+    // Transfer SOL from vault to user via direct lamport manipulation
+    **ctx.accounts.sol_vault.to_account_info().try_borrow_mut_lamports()? -= sol_out;
+    **ctx.accounts.user.to_account_info().try_borrow_mut_lamports()? += sol_out;
 
     msg!("Sell: {} tokens -> {} SOL (fee: {} tokens)", token_amount, sol_out, fee);
 

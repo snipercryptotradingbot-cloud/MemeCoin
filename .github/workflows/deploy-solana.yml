@@ -30,12 +30,19 @@ jobs:
           mkdir -p "$HOME/.config/solana"
           printf '%s' "$DEPLOYER_KEYPAIR" | base64 -d > "$HOME/.config/solana/id.json"
 
+      - name: Install program keypair
+        env:
+          PROGRAM_KEYPAIR: ${{ secrets.SOLANA_PROGRAM_KEYPAIR }}
+        run: |
+          mkdir -p target/deploy
+          printf '%s' "$PROGRAM_KEYPAIR" | base64 -d > target/deploy/bonding_curve-keypair.json
+
       - name: Install Solana CLI
         run: |
           curl -SfL "https://github.com/anza-xyz/agave/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
           tar -xjf solana.tar.bz2
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
-          printf '#!/usr/bin/env bash\nprintf "solana-install %s\\n" "${SOLANA_VERSION}"\n' > /usr/local/bin/solana-install
+          printf '#!/usr/bin/env bash\nprintf "solana-install %s\n" "${SOLANA_VERSION}"\n' > /usr/local/bin/solana-install
           chmod +x /usr/local/bin/solana-install
 
       - name: Cache Anchor CLI
@@ -69,7 +76,12 @@ jobs:
           done || true
 
       - name: Build program
-        run: anchor build
+        run: |
+          anchor build
+          # anchor build puts .so in programs/bonding_curve/target/deploy/
+          # Copy to target/deploy/ for anchor deploy
+          mkdir -p target/deploy
+          cp programs/bonding_curve/target/deploy/bonding_curve.so target/deploy/bonding_curve.so
 
       - name: Deploy program to devnet
         run: anchor deploy --provider.cluster devnet

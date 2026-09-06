@@ -57,35 +57,16 @@ pub fn handler(ctx: Context<LiquidityAction>, lp_tokens: u64) -> Result<()> {
 
     let mint_key = curve.mint;
     let curve_bump = curve.curve_bump;
-    let sol_vault_bump = curve.sol_vault_bump;
-    let curve_address = curve.key();
     let signer_seeds: &[&[&[u8]]] = &[&[
         CURVE_SEED,
         mint_key.as_ref(),
         &[curve_bump],
     ]];
-    // SOL vault is a separate PDA ([SOL_VAULT_SEED, curve]) and must be signed
-    // with its own seeds when SOL is paid out of it.
-    let vault_signer_seeds: &[&[&[u8]]] = &[&[
-        SOL_VAULT_SEED,
-        curve_address.as_ref(),
-        &[sol_vault_bump],
-    ]];
 
-    // Transfer SOL from vault to creator
+    // Transfer SOL from vault to creator via direct lamport manipulation
     if sol_out > 0 {
-        let ix = anchor_lang::system_program::Transfer {
-            from: ctx.accounts.sol_vault.to_account_info(),
-            to: ctx.accounts.creator.to_account_info(),
-        };
-        anchor_lang::system_program::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                ix,
-                vault_signer_seeds,
-            ),
-            sol_out,
-        )?;
+        **ctx.accounts.sol_vault.to_account_info().try_borrow_mut_lamports()? -= sol_out;
+        **ctx.accounts.creator.to_account_info().try_borrow_mut_lamports()? += sol_out;
     }
 
     // Transfer tokens from vault to creator (curve PDA signs)

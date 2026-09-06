@@ -1,22 +1,21 @@
-# fix: no-op for workflow path trigger (solana release asset URL) — 2026-09-06
 [toolchain]
 solana_version = "4.2.2"
 
 [features]
-seeds = false
+resolution = true
 skip-lint = false
 
 [programs.devnet]
 bonding_curve = "3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6"
 
 [programs.mainnet]
-bonding_curve = "3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6"
+bonding_curve = "He6n9nSEoMdUNZL6AbuRFcPSAh2SgiwZg3tfVmdhCtB4"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
