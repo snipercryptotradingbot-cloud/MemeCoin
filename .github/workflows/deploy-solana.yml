@@ -37,7 +37,8 @@ jobs:
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
           printf '#!/usr/bin/env bash\nprintf "solana-install %s\\n" "${SOLANA_VERSION}"\n' > /usr/local/bin/solana-install
           chmod +x /usr/local/bin/solana-install
-- name: Cache Anchor CLI
+
+      - name: Cache Anchor CLI
         uses: actions/cache@v4
         with:
           path: |
@@ -48,7 +49,6 @@ jobs:
           key: anchor-${{ env.ANCHOR_CLI_VERSION }}
 
       - name: Install Anchor CLI
- 
         run: |
           if ! command -v anchor >/dev/null 2>&1; then
             cargo install --locked anchor-cli --version "$ANCHOR_CLI_VERSION"
