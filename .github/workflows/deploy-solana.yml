@@ -19,7 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@1.97.0
+      # time 0.3.29 (anchor-cli dep) fails to compile on rustc >= 1.80 with the
+      # `parsing` feature (E0282). 1.79.0 is the newest verified-working pin.
+      - uses: dtolnay/rust-toolchain@1.79.0
 
       - name: Install deployer keypair
         env:
@@ -35,9 +37,24 @@ jobs:
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
           printf '#!/usr/bin/env bash\nprintf "solana-install %s\\n" "${SOLANA_VERSION}"\n' > /usr/local/bin/solana-install
           chmod +x /usr/local/bin/solana-install
+- name: Cache Anchor CLI
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: anchor-${{ env.ANCHOR_CLI_VERSION }}
 
       - name: Install Anchor CLI
-        run: cargo install --locked anchor-cli --version "$ANCHOR_CLI_VERSION"
+ 
+        run: |
+          if ! command -v anchor >/dev/null 2>&1; then
+            cargo install --locked anchor-cli --version "$ANCHOR_CLI_VERSION"
+          else
+            anchor --version
+          fi
 
       - name: Airdrop deployer (best-effort)
         run: |
