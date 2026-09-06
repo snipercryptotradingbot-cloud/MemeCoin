@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a new feature or improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve for users or the team?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should it work? Include UX details if known.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Frontend (Next.js)
+        - API worker (worker.js)
+        - Solana program (bonding_curve)
+        - Infra / CI / deploy
+        - Docs
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - priority-high
+        - priority-medium
+        - priority-low
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / alternatives
