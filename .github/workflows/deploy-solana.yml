@@ -6,6 +6,7 @@ on:
     paths:
       - 'programs/bonding_curve/**'
       - 'Anchor.toml'
+      - '.github/workflows/deploy-solana.yml'
   workflow_dispatch:
 
 env:
@@ -29,7 +30,7 @@ jobs:
 
       - name: Install Solana CLI
         run: |
-          curl -SfL "https://github.com/anza-xyz/agave/releases/download/v${SOLANA_VERSION}/solana-release.x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
+          curl -SfL "https://github.com/anza-xyz/agave/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
           tar -xjf solana.tar.bz2
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
           printf '#!/usr/bin/env bash\nprintf "solana-install %s\\n" "${SOLANA_VERSION}"\n' > /usr/local/bin/solana-install
