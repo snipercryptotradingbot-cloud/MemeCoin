@@ -1,15 +1,20 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::{Token2022, TokenAccount, Mint};
-use anchor_spl::token_interface;
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface};
 
 use crate::constants::*;
 use crate::errors::*;
 use crate::state::*;
+use super::buy::SwapTokens;
 
 pub fn handler(ctx: Context<SwapTokens>, token_amount: u64, min_sol_out: u64) -> Result<()> {
     let curve = &mut ctx.accounts.curve;
     require!(curve.status == CurveStatus::Active, BondingCurveError::CurveNotActive);
     require!(token_amount > 0, BondingCurveError::InvalidAmounts);
+    require_keys_eq!(
+        ctx.accounts.platform_wallet.key(),
+        curve.platform_wallet,
+        BondingCurveError::PlatformWalletMismatch
+    );
 
     let sol_vault_lamports = ctx.accounts.sol_vault.lamports();
     let token_vault_amount = ctx.accounts.token_vault.amount;
@@ -88,7 +93,7 @@ pub fn handler(ctx: Context<SwapTokens>, token_amount: u64, min_sol_out: u64) ->
         from: ctx.accounts.sol_vault.to_account_info(),
         to: ctx.accounts.user.to_account_info(),
     };
-    anchor_lang::system_program::transfer_signed(
+    anchor_lang::system_program::transfer(
         CpiContext::new_with_signer(
             ctx.accounts.system_program.to_account_info(),
             ix,

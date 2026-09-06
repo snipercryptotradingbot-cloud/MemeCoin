@@ -1,0 +1,52 @@
+name: Deploy Solana Program
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'programs/bonding_curve/**'
+      - 'Anchor.toml'
+  workflow_dispatch:
+
+env:
+  SOLANA_VERSION: '4.2.2'
+  ANCHOR_CLI_VERSION: '0.30.1'
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install deployer keypair
+        env:
+          DEPLOYER_KEYPAIR: ${{ secrets.SOLANA_DEPLOYER_KEYPAIR }}
+        run: |
+          mkdir -p "$HOME/.config/solana"
+          printf '%s' "$DEPLOYER_KEYPAIR" | base64 -d > "$HOME/.config/solana/id.json"
+
+      - name: Install Solana CLI
+        run: |
+          curl -SfL "https://github.com/anza-xyz/agave/releases/download/v${SOLANA_VERSION}/solana-release.x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
+          tar -xjf solana.tar.bz2
+          echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
+          printf '#!/usr/bin/env bash\nprintf "solana-install %s\\n" "${SOLANA_VERSION}"\n' > /usr/local/bin/solana-install
+          chmod +x /usr/local/bin/solana-install
+
+      - name: Install Anchor CLI
+        run: cargo install --locked anchor-cli --version "$ANCHOR_CLI_VERSION"
+
+      - name: Airdrop deployer (best-effort)
+        run: |
+          for i in 1 2 3; do
+            solana --url https://api.devnet.solana.com airdrop 2 && break
+            sleep 5
+          done || true
+
+      - name: Build program
+        run: anchor build
+
+      - name: Deploy program to devnet
+        run: anchor deploy --provider.cluster devnet

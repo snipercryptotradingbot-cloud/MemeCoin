@@ -1,0 +1,63 @@
+name: Deploy Cloudflare
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'worker.js'
+      - 'wrangler.jsonc'
+      - 'wrangler.render.jsonc'
+      - 'migrations/**'
+      - 'open-next.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.25.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write .env.local
+        env:
+          ENV_LOCAL: ${{ secrets.ENV_LOCAL }}
+        run: printf '%s' "$ENV_LOCAL" > .env.local
+
+      - name: Build frontend (OpenNext)
+        run: pnpm exec opennextjs-cloudflare build
+
+      - name: Build secrets payload from .env.local
+        run: |
+          node -e 'const fs=require("fs");const c=fs.readFileSync(".env.local","utf8");const o={};for(const l of c.split("\n")){if(!l||l.startsWith("#"))continue;const i=l.indexOf("=");if(i<0)continue;o[l.slice(0,i).trim()]=l.slice(i+1).trim();}["NEXT_PUBLIC_PLATFORM_FEE_SOL","NEXT_PUBLIC_REVOKE_FEE_SOL","NEXT_PUBLIC_MIGRATE_FEE_SOL"].forEach(k=>delete o[k]);fs.writeFileSync("/tmp/secrets.json",JSON.stringify(o));'
+
+      - name: Set secrets (main worker)
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: node_modules/.bin/wrangler secret bulk /tmp/secrets.json --config wrangler.jsonc
+
+      - name: Set secrets (render worker)
+        run: node_modules/.bin/wrangler secret bulk /tmp/secrets.json --config wrangler.render.jsonc
+
+      - name: Apply D1 migrations
+        run: node_modules/.bin/wrangler d1 migrations apply mememint-db --remote
+
+      - name: Deploy render worker
+        run: node_modules/.bin/wrangler deploy --config wrangler.render.jsonc
+
+      - name: Deploy main worker
+        run: node_modules/.bin/wrangler deploy --config wrangler.jsonc

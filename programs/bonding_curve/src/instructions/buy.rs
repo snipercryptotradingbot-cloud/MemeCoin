@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::{Token2022, TokenAccount, Mint};
-use anchor_spl::token_interface;
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface};
 
 use crate::constants::*;
 use crate::errors::*;
@@ -19,7 +18,7 @@ pub struct SwapTokens<'info> {
     )]
     pub curve: Account<'info, BondingCurve>,
 
-    pub mint: Account<'info, Mint>,
+    pub mint: InterfaceAccount<'info, Mint>,
 
     /// SOL vault PDA
     /// CHECK: PDA used only as SOL vault
@@ -37,7 +36,7 @@ pub struct SwapTokens<'info> {
         associated_token::authority = curve,
         associated_token::token_program = token_program,
     )]
-    pub token_vault: Account<'info, TokenAccount>,
+    pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
     /// User's token account
     #[account(
@@ -46,9 +45,14 @@ pub struct SwapTokens<'info> {
         associated_token::authority = user,
         associated_token::token_program = token_program,
     )]
-    pub user_token_account: Account<'info, TokenAccount>,
+    pub user_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub token_program: Program<'info, Token2022>,
+    /// Platform wallet that receives the swap fee
+    #[account(mut)]
+    /// CHECK: Address is validated against curve state in handler
+    pub platform_wallet: UncheckedAccount<'info>,
+
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -56,6 +60,11 @@ pub fn handler(ctx: Context<SwapTokens>, sol_amount: u64, min_tokens_out: u64) -
     let curve = &mut ctx.accounts.curve;
     require!(curve.status == CurveStatus::Active, BondingCurveError::CurveNotActive);
     require!(sol_amount > 0, BondingCurveError::InvalidAmounts);
+    require_keys_eq!(
+        ctx.accounts.platform_wallet.key(),
+        curve.platform_wallet,
+        BondingCurveError::PlatformWalletMismatch
+    );
 
     let sol_vault_lamports = ctx.accounts.sol_vault.lamports();
     let token_vault_amount = ctx.accounts.token_vault.amount;
@@ -128,9 +137,9 @@ pub fn handler(ctx: Context<SwapTokens>, sol_amount: u64, min_tokens_out: u64) -
     if fee > 0 {
         let ix_fee = anchor_lang::system_program::Transfer {
             from: ctx.accounts.sol_vault.to_account_info(),
-            to: curve.platform_wallet.to_account_info(),
+            to: ctx.accounts.platform_wallet.to_account_info(),
         };
-        anchor_lang::system_program::transfer_signed(
+        anchor_lang::system_program::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.system_program.to_account_info(),
                 ix_fee,

@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token_interface::Mint;
 
+use crate::constants::*;
 use crate::errors::*;
 use crate::state::*;
 
@@ -16,7 +18,7 @@ pub struct AdminAction<'info> {
     )]
     pub curve: Account<'info, BondingCurve>,
 
-    pub mint: Account<'info, anchor_spl::token_2022::Mint>,
+    pub mint: InterfaceAccount<'info, Mint>,
 }
 
 pub fn pause_curve(ctx: Context<AdminAction>) -> Result<()> {

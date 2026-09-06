@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mememint-render",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-06-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    "NEXT_PUBLIC_PLATFORM_FEE_SOL": "0.1",
+    "NEXT_PUBLIC_REVOKE_FEE_SOL": "0.02",
+    "NEXT_PUBLIC_MIGRATE_FEE_SOL": "0.05"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mememint-db",
+      "database_id": "d9f9df79-99e0-4725-9727-27cf13a9042b"
+    }
+  ]
+}

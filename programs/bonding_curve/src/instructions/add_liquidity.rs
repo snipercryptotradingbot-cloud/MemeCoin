@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::{Token2022, TokenAccount, Mint};
-use anchor_spl::token_interface;
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface};
 
 use crate::constants::*;
 use crate::errors::*;
@@ -19,7 +18,7 @@ pub struct LiquidityAction<'info> {
     )]
     pub curve: Account<'info, BondingCurve>,
 
-    pub mint: Account<'info, Mint>,
+    pub mint: InterfaceAccount<'info, Mint>,
 
     /// SOL vault PDA
     /// CHECK: PDA used only as SOL vault
@@ -37,7 +36,7 @@ pub struct LiquidityAction<'info> {
         associated_token::authority = curve,
         associated_token::token_program = token_program,
     )]
-    pub token_vault: Account<'info, TokenAccount>,
+    pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
     /// Creator's token account
     #[account(
@@ -46,7 +45,7 @@ pub struct LiquidityAction<'info> {
         associated_token::authority = creator,
         associated_token::token_program = token_program,
     )]
-    pub creator_token_account: Account<'info, TokenAccount>,
+    pub creator_token_account: InterfaceAccount<'info, TokenAccount>,
 
     /// User position PDA (tracks creator's LP share)
     #[account(
@@ -58,11 +57,12 @@ pub struct LiquidityAction<'info> {
     )]
     pub user_position: Account<'info, UserPosition>,
 
-    pub token_program: Program<'info, Token2022>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
 pub fn handler(ctx: Context<LiquidityAction>, sol_amount: u64, token_amount: u64) -> Result<()> {
+    let curve_key = ctx.accounts.curve.key();
     let curve = &mut ctx.accounts.curve;
     require!(curve.status == CurveStatus::Active, BondingCurveError::CurveNotActive);
     require!(sol_amount > 0 || token_amount > 0, BondingCurveError::InvalidAmounts);
@@ -72,7 +72,7 @@ pub fn handler(ctx: Context<LiquidityAction>, sol_amount: u64, token_amount: u64
     // Initialize position if new
     if user_position.lp_tokens == 0 && user_position.sol_deposited == 0 {
         user_position.user = ctx.accounts.creator.key();
-        user_position.curve = ctx.accounts.curve.key();
+        user_position.curve = curve_key;
         user_position.bump = ctx.bumps.user_position;
     }
 
@@ -86,7 +86,7 @@ pub fn handler(ctx: Context<LiquidityAction>, sol_amount: u64, token_amount: u64
         sol_value
             .checked_mul(token_value)
             .ok_or(BondingCurveError::MathOverflow)?
-            .sqrt() as u64
+            .isqrt() as u64
     } else {
         // Proportional deposit
         let sol_share = sol_value

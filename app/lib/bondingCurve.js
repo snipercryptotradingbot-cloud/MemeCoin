@@ -21,6 +21,7 @@ import {
   getSolVaultPda,
   getUserPositionPda,
 } from './constants';
+import { getBondingCurveState } from './poolState';
 
 /**
  * Build an initialize_curve instruction.
@@ -142,6 +143,10 @@ export async function buildBuyTokensTx(
 
   const solLamports = solToLamports(solAmount);
 
+  const curveState = await getBondingCurveState(connection, mintAddress);
+  if (!curveState) throw new Error('Bonding curve not found for mint');
+  const platformWallet = new PublicKey(curveState.platformWallet);
+
   const transaction = new Transaction();
 
   // discriminator for buy_tokens = sha256("global:buy_tokens")[0..8]
@@ -158,6 +163,7 @@ export async function buildBuyTokensTx(
     { pubkey: solVaultPda, isSigner: false, isWritable: true },
     { pubkey: tokenVault, isSigner: false, isWritable: true },
     { pubkey: userTokenAccount, isSigner: false, isWritable: true },
+    { pubkey: platformWallet, isSigner: false, isWritable: true },
     { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },
@@ -206,6 +212,10 @@ export async function buildSellTokensTx(
     TOKEN_2022_PROGRAM_ID
   );
 
+  const curveState = await getBondingCurveState(connection, mintAddress);
+  if (!curveState) throw new Error('Bonding curve not found for mint');
+  const platformWallet = new PublicKey(curveState.platformWallet);
+
   const transaction = new Transaction();
 
   // discriminator for sell_tokens = sha256("global:sell_tokens")[0..8]
@@ -222,6 +232,7 @@ export async function buildSellTokensTx(
     { pubkey: solVaultPda, isSigner: false, isWritable: true },
     { pubkey: tokenVault, isSigner: false, isWritable: true },
     { pubkey: userTokenAccount, isSigner: false, isWritable: true },
+    { pubkey: platformWallet, isSigner: false, isWritable: true },
     { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },

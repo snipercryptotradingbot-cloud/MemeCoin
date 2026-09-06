@@ -1,6 +1,6 @@
 // ============================================================
 // MemeMint — Consolidated Cloudflare Worker
-// Serves: Static assets (OpenNext), API routes, Durable Objects
+// Serves: API routes + Durable Objects; forwards page requests to the OpenNext render worker (mememint-render)
 // ============================================================
 
 // ---------- Shared Utilities ----------
@@ -1011,11 +1011,10 @@ export default {
     const apiResponse = await apiRouter(request, env);
     if (apiResponse) return apiResponse;
 
-    // Serve static assets (OpenNext build output)
-    try {
-      return await env.ASSETS.fetch(request);
-    } catch (err) {
-      return new Response(`Frontend error: ${err.message}`, { status: 502 });
+    // Forward non-API requests to the OpenNext render worker (SSR/pages)
+    if (env.RENDER) {
+      return env.RENDER.fetch(request);
     }
+    return new Response('Frontend error: render service not configured', { status: 502 });
   },
 };

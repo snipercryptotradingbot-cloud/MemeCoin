@@ -43,4 +43,7 @@ pub enum BondingCurveError {
 
     #[msg("Invalid SOL target: must be greater than zero")]
     InvalidSolTarget,
+
+    #[msg("Platform wallet does not match curve configuration")]
+    PlatformWalletMismatch,
 }

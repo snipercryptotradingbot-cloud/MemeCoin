@@ -2,7 +2,7 @@ import { PublicKey } from '@solana/web3.js';
 
 // Program ID - replace with actual deployed program ID
 export const BONDING_CURVE_PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_BONDING_CURVE_PROGRAM_ID || 'BONDcVoL1pUMnCe9VHjMFRhGRjP1MjRoVdZQxKDKLQGr'
+  process.env.NEXT_PUBLIC_BONDING_CURVE_PROGRAM_ID || '3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6'
 );
 
 // PDA seed prefixes (must match the on-chain program)

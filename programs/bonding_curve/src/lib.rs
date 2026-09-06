@@ -7,7 +7,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("BONDcVoL1pUMnCe9VHjMFRhGRjP1MjRoVdZQxKDKLQGr");
+declare_id!("3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6");
 
 #[program]
 pub mod bonding_curve {
@@ -22,7 +22,7 @@ pub mod bonding_curve {
         sol_target: u64,
         fee_basis_points: u16,
     ) -> Result<()> {
-        instructions::initialize_curve::handler(ctx, sol_amount, token_amount, sol_target, fee_basis_points)
+        instructions::initialize::handler(ctx, sol_amount, token_amount, sol_target, fee_basis_points)
     }
 
     /// Buy tokens with SOL. Applies fee to SOL input.
@@ -31,7 +31,7 @@ pub mod bonding_curve {
         sol_amount: u64,
         min_tokens_out: u64,
     ) -> Result<()> {
-        instructions::buy_tokens::handler(ctx, sol_amount, min_tokens_out)
+        instructions::buy::handler(ctx, sol_amount, min_tokens_out)
     }
 
     /// Sell tokens for SOL. Applies fee to token input.
@@ -40,7 +40,7 @@ pub mod bonding_curve {
         token_amount: u64,
         min_sol_out: u64,
     ) -> Result<()> {
-        instructions::sell_tokens::handler(ctx, token_amount, min_sol_out)
+        instructions::sell::handler(ctx, token_amount, min_sol_out)
     }
 
     /// Add liquidity proportionally. Only creator can call.
@@ -62,16 +62,16 @@ pub mod bonding_curve {
 
     /// Pause the curve (stop swaps). Only creator can call.
     pub fn pause_curve(ctx: Context<AdminAction>) -> Result<()> {
-        instructions::pause_curve::handler(ctx)
+        instructions::admin::pause_curve(ctx)
     }
 
     /// Resume the curve after pause. Only creator can call.
     pub fn resume_curve(ctx: Context<AdminAction>) -> Result<()> {
-        instructions::resume_curve::handler(ctx)
+        instructions::admin::resume_curve(ctx)
     }
 
     /// Close the curve and withdraw all remaining funds. Only creator can call.
     pub fn close_curve(ctx: Context<AdminAction>) -> Result<()> {
-        instructions::close_curve::handler(ctx)
+        instructions::admin::close_curve(ctx)
     }
 }

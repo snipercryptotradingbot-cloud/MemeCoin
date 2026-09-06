@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::{self, Token2022, TokenAccount, Mint};
-use anchor_spl::token_interface;
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface};
 
 use crate::constants::*;
 use crate::errors::*;
@@ -12,7 +12,7 @@ pub struct InitializeCurve<'info> {
     pub creator: Signer<'info>,
 
     /// The Token-2022 mint to create a curve for
-    pub mint: Account<'info, Mint>,
+    pub mint: InterfaceAccount<'info, Mint>,
 
     #[account(
         init,
@@ -42,7 +42,7 @@ pub struct InitializeCurve<'info> {
         associated_token::authority = curve,
         associated_token::token_program = token_program,
     )]
-    pub token_vault: Account<'info, TokenAccount>,
+    pub token_vault: InterfaceAccount<'info, TokenAccount>,
 
     /// Creator's token account to deposit initial tokens from
     #[account(
@@ -51,9 +51,9 @@ pub struct InitializeCurve<'info> {
         associated_token::authority = creator,
         associated_token::token_program = token_program,
     )]
-    pub creator_token_account: Account<'info, TokenAccount>,
+    pub creator_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub token_program: Program<'info, Token2022>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -81,7 +81,7 @@ pub fn handler(
     curve.mint = ctx.accounts.mint.key();
     curve.curve_bump = ctx.bumps.curve;
     curve.sol_vault_bump = ctx.bumps.sol_vault;
-    curve.token_vault_bump = ctx.bumps.token_vault; // not used for ATA but stored
+    curve.token_vault_bump = 0; // ATA has no PDA bump
     curve.status = CurveStatus::Active;
     curve.sol_reserves = sol_amount;
     curve.token_reserves = token_amount;

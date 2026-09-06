@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::{Token2022, TokenAccount, Mint};
-use anchor_spl::token_interface;
+use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface};
 
 use crate::constants::*;
 use crate::errors::*;
 use crate::state::*;
+use super::add_liquidity::LiquidityAction;
 
 pub fn handler(ctx: Context<LiquidityAction>, lp_tokens: u64) -> Result<()> {
     let curve = &mut ctx.accounts.curve;
@@ -69,7 +69,7 @@ pub fn handler(ctx: Context<LiquidityAction>, lp_tokens: u64) -> Result<()> {
             from: ctx.accounts.sol_vault.to_account_info(),
             to: ctx.accounts.creator.to_account_info(),
         };
-        anchor_lang::system_program::transfer_signed(
+        anchor_lang::system_program::transfer(
             CpiContext::new_with_signer(
                 ctx.accounts.system_program.to_account_info(),
                 ix,
