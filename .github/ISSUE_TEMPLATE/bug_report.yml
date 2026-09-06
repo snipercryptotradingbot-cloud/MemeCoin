@@ -1,0 +1,48 @@
+name: Bug report
+description: Report something that doesn't work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for filing a bug! Check existing issues first."
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: Where did you see this?
+      options:
+        - dev (mememint-dev)
+        - qa (mememint-qa)
+        - main (prod)
+        - localhost
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe the bug with expected vs actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - priority-high (blocks launch)
+        - priority-medium
+        - priority-low (nice to fix)
+  - type: textarea
+    id: extra
+    attributes:
+      label: Logs / screenshots / extra context
