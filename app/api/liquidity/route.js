@@ -8,6 +8,7 @@ import {
   buildRemoveLiquidityTx,
   buildPauseCurveTx,
   buildCloseCurveTx,
+  buildMigrateToDexTx,
 } from '@/app/lib/bondingCurve';
 import { getBondingCurveState, getPoolSummary } from '@/app/lib/poolState';
 import { TREASURY_WALLET } from '@/app/lib/constants';
@@ -286,6 +287,11 @@ export async function POST(request) {
 
       case 'close': {
         result = await buildCloseCurveTx(connection, wallet, mint_address);
+        break;
+      }
+
+      case 'migrate': {
+        result = await buildMigrateToDexTx(connection, wallet, mint_address);
         break;
       }
 

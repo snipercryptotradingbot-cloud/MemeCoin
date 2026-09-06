@@ -14,7 +14,7 @@ pub struct BondingCurve {
     pub sol_vault_bump: u8,        // 1
     /// Bump seed for token vault (ATA)
     pub token_vault_bump: u8,      // 1
-    /// Current status: Active=0, Paused=1, Closed=2
+    /// Current status: Active=0, Paused=1, Closed=2, Migrated=3
     pub status: CurveStatus,       // 1
     /// SOL reserves in lamports
     pub sol_reserves: u64,         // 8
@@ -42,6 +42,7 @@ pub enum CurveStatus {
     Active,
     Paused,
     Closed,
+    Migrated,
 }
 
 /// UserPosition tracks a user's share in a specific bonding curve.
