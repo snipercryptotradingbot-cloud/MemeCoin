@@ -2,7 +2,7 @@ name: Deploy Solana Program
 
 on:
   push:
-    branches: [main]
+    branches: [dev, qa, main]
     paths:
       - 'programs/bonding_curve/**'
       - 'Anchor.toml'
