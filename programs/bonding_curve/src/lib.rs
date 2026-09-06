@@ -43,7 +43,7 @@ pub mod bonding_curve {
         instructions::sell::handler(ctx, token_amount, min_sol_out)
     }
 
-    /// Add liquidity proportionally. Only creator can call.
+    /// Add liquidity proportionally. Any wallet can call.
     pub fn add_liquidity(
         ctx: Context<LiquidityAction>,
         sol_amount: u64,
@@ -52,12 +52,19 @@ pub mod bonding_curve {
         instructions::add_liquidity::handler(ctx, sol_amount, token_amount)
     }
 
-    /// Remove liquidity proportionally. Only creator can call.
+    /// Remove liquidity proportionally. Any wallet can call.
     pub fn remove_liquidity(
         ctx: Context<LiquidityAction>,
         lp_tokens: u64,
     ) -> Result<()> {
         instructions::remove_liquidity::handler(ctx, lp_tokens)
+    }
+
+    /// Graduate the curve to an external DEX once the SOL target is reached.
+    /// Pays out the remaining SOL and token reserves to the creator and marks
+    /// the curve as migrated. Only the creator can call.
+    pub fn migrate_to_dex(ctx: Context<MigrateToDex>) -> Result<()> {
+        instructions::migrate::handler(ctx)
     }
 
     /// Pause the curve (stop swaps). Only creator can call.

@@ -373,83 +373,6 @@ async function whaleTrackerHandler(request, env) {
   return json({ success: true, address, network, lamports, sol, isWhale: sol > 1000, thresholdSol: 1000, lastChecked: new Date().toISOString() });
 }
 
-async function liquidityHandler(request, env) {
-  const url = new URL(request.url);
-
-  if (request.method === 'GET') {
-    const action = url.searchParams.get('action') || 'status';
-
-    if (action === 'pools') {
-      if (!env.DB) return json({ pools: [], total: 0 });
-      const page = parseInt(url.searchParams.get('page') || '1');
-      const limit = parseInt(url.searchParams.get('limit') || '20');
-      const offset = (page - 1) * limit;
-      const result = await env.DB.prepare(
-        "SELECT * FROM liquidity_pools WHERE status != 'closed' ORDER BY created_at DESC LIMIT ? OFFSET ?"
-      ).bind(limit, offset).all();
-      const countResult = await env.DB.prepare(
-        "SELECT COUNT(*) as total FROM liquidity_pools WHERE status != 'closed'"
-      ).first();
-      return json({ pools: result.results || [], total: countResult?.total || 0, page, limit });
-    }
-
-    if (action === 'status') {
-      const mintAddress = url.searchParams.get('mint_address');
-      if (!mintAddress) return json({ error: 'mint_address is required' }, 400);
-      let dbPool = null;
-      if (env.DB) {
-        dbPool = await env.DB.prepare(
-          "SELECT * FROM liquidity_pools WHERE curve_address = ? OR pool_address = ?"
-        ).bind(mintAddress, mintAddress).first();
-      }
-      return json(dbPool || { error: 'Pool not found' }, dbPool ? 200 : 404);
-    }
-
-    return json({ error: 'Invalid action' }, 400);
-  }
-
-  if (request.method === 'POST') {
-    const body = await request.json();
-    const { action, wallet, mint_address, pool_id } = body;
-
-    if (!action) return json({ error: 'action is required' }, 400);
-
-    if (action === 'confirm') {
-      const { tx_signature, pool_data, activity_action, sol_amount, token_amount } = body;
-      if (!tx_signature || !pool_id) return json({ error: 'tx_signature and pool_id are required' }, 400);
-      if (env.DB) {
-        if (pool_data) {
-          await env.DB.prepare(
-            `UPDATE liquidity_pools SET sol_accumulated = COALESCE(?, sol_accumulated), token_reserves = COALESCE(?, token_reserves), total_swaps = COALESCE(?, total_swaps), transaction_signature = COALESCE(?, transaction_signature), updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-          ).bind(pool_data.sol_reserves, pool_data.token_reserves, pool_data.total_swaps, tx_signature, pool_id).run();
-        }
-        await env.DB.prepare(
-          "INSERT INTO liquidity_activity_log (id, user_wallet, pool_id, action, sol_amount, token_amount, tx_signature) VALUES (?, ?, ?, ?, ?, ?, ?)"
-        ).bind(crypto.randomUUID(), wallet || '', pool_id, activity_action || 'confirm', sol_amount || null, token_amount || null, tx_signature).run();
-      }
-      return json({ status: 'confirmed', tx_signature });
-    }
-
-    if (!wallet || !mint_address) return json({ error: 'wallet and mint_address are required' }, 400);
-
-    if (action === 'initialize' && env.DB) {
-      const poolId = crypto.randomUUID();
-      const { initial_sol, initial_tokens, fee_basis_points, sol_target } = body;
-      await env.DB.prepare(
-        `INSERT INTO liquidity_pools (id, token_id, pool_address, curve_address, sol_accumulated, token_reserves, fee_tier, creator_wallet, status, sol_target) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
-      ).bind(poolId, body.token_id || '', mint_address, '', parseFloat(initial_sol || 0), parseInt(initial_tokens || 0), ((fee_basis_points || 100) / 100).toFixed(1) + '%', wallet, parseFloat(sol_target || 85)).run();
-      await env.DB.prepare(
-        "INSERT INTO user_liquidity_positions (id, user_wallet, pool_id, sol_deposited, tokens_deposited, action) VALUES (?, ?, ?, ?, ?, 'initialize')"
-      ).bind(crypto.randomUUID(), wallet, poolId, parseFloat(initial_sol || 0), parseInt(initial_tokens || 0)).run();
-      return json({ status: 'recorded', action, poolId });
-    }
-
-    return json({ status: 'acknowledged', action, message: 'Transaction must be built client-side' });
-  }
-
-  return json({ error: 'Method Not Allowed' }, 405);
-}
-
 async function tokenInfoHandler(request, env) {
   if (request.method !== 'GET') return json({ error: 'Method Not Allowed' }, 405);
   const url = new URL(request.url);
@@ -960,7 +883,7 @@ async function apiRouter(request, env) {
     if (path.startsWith('/api/activities')) return activitiesHandler(request, env);
     if (path.startsWith('/api/user-activity')) return activitiesHandler(request, env);
     if (path.startsWith('/api/whale-tracker')) return whaleTrackerHandler(request, env);
-    if (path.startsWith('/api/liquidity')) return liquidityHandler(request, env);
+    if (path.startsWith('/api/liquidity')) return forwardApiToRender(request, env);
     if (path.startsWith('/api/token-info')) return tokenInfoHandler(request, env);
     if (path.startsWith('/api/dex-screener')) return dexScreenerHandler(request, env);
     if (path.startsWith('/api/helius-rpc')) return heliusRpcHandler(request, env);
@@ -989,6 +912,11 @@ async function apiRouter(request, env) {
 }
 
 // ---------- Export ----------
+
+async function forwardApiToRender(request, env) {
+  if (!env.RENDER) return json({ error: 'Render service not configured' }, 502);
+  return env.RENDER.fetch(request);
+}
 
 export default {
   async fetch(request, env, ctx) {

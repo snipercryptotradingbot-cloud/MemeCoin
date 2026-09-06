@@ -113,6 +113,16 @@ export async function POST(request) {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`
       ).bind(sol_amount || 0, token_amount || 0, pool_id).run();
+    } else if (action === 'migrate') {
+      await db.prepare(
+        `UPDATE liquidity_pools SET
+          is_migrated = 1,
+          amm = 'raydium',
+          lp_burned = 1,
+          status = 'migrated',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`
+      ).bind(pool_id).run();
     } else if (action === 'buy' || action === 'sell') {
       await db.prepare(
         `UPDATE liquidity_pools SET

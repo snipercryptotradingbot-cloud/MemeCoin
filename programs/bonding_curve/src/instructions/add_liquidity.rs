@@ -14,7 +14,6 @@ pub struct LiquidityAction<'info> {
         mut,
         seeds = [CURVE_SEED, mint.key().as_ref()],
         bump = curve.curve_bump,
-        has_one = creator,
     )]
     pub curve: Account<'info, BondingCurve>,
 

@@ -42,7 +42,9 @@ pub fn resume_curve(ctx: Context<AdminAction>) -> Result<()> {
 pub fn close_curve(ctx: Context<AdminAction>) -> Result<()> {
     let curve = &mut ctx.accounts.curve;
     require!(
-        curve.status == CurveStatus::Active || curve.status == CurveStatus::Paused,
+        curve.status == CurveStatus::Active
+            || curve.status == CurveStatus::Paused
+            || curve.status == CurveStatus::Migrated,
         BondingCurveError::CurveAlreadyClosed
     );
 

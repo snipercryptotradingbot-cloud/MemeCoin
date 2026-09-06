@@ -1,6 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { getCurvePda, getSolVaultPda, getUserPositionPda, BONDING_CURVE_PROGRAM_ID } from './constants';
+import { getCurvePda, getSolVaultPda, getUserPositionPda, BONDING_CURVE_PROGRAM_ID } from './constants.js';
 
 const CURVE_ACCOUNT_SIZE = 8 + 32 + 32 + 1 + 1 + 1 + 1 + 8 + 8 + 8 + 2 + 32 + 8 + 8 + 32; // ~208 bytes
 const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 1 + 8 + 8 + 8 + 16; // ~113 bytes
@@ -143,7 +143,7 @@ export async function getPoolSummary(connection, mintAddress, dbPool = null) {
     ? Math.min((curve.solReserves / curve.initialSolTarget) * 100, 100)
     : 0;
 
-  const statusMap = { 0: 'active', 1: 'paused', 2: 'closed' };
+  const statusMap = { 0: 'active', 1: 'paused', 2: 'closed', 3: 'migrated' };
 
   return {
     curveAddress: curve.curveAddress,

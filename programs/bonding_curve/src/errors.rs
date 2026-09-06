@@ -8,6 +8,9 @@ pub enum BondingCurveError {
     #[msg("Curve is already closed")]
     CurveAlreadyClosed,
 
+    #[msg("Curve has not reached its SOL target yet")]
+    CurveNotGraduated,
+
     #[msg("Insufficient SOL provided")]
     InsufficientSol,
 

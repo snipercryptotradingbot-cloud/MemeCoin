@@ -23,7 +23,9 @@ import {
   buildAddLiquidityTx,
   buildRemoveLiquidityTx,
   buildCloseCurveTx,
+  buildMigrateToDexTx,
 } from '@/app/lib/bondingCurve';
+import { getBondingCurveState } from '@/app/lib/poolState';
 
 const API_BASE = '/api/liquidity';
 const POSITIONS_API = '/api/liquidity/positions';
@@ -69,9 +71,32 @@ export default function LiquidityPage() {
   const [liqMode, setLiqMode] = useState('add');
   const [liqSolAmount, setLiqSolAmount] = useState('');
   const [liqTokenAmount, setLiqTokenAmount] = useState('');
+  const [liqLpAmount, setLiqLpAmount] = useState('');
   const [liqPool, setLiqPool] = useState(null);
   const [liqProcessing, setLiqProcessing] = useState(false);
   const [liqResult, setLiqResult] = useState(null);
+
+  // Record a confirmed on-chain action to D1 (positions + activity log)
+  const recordPosition = useCallback(async (action, poolId, { sol, token, lp, tx } = {}) => {
+    if (!address || !poolId) return;
+    try {
+      await fetch(POSITIONS_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: address,
+          pool_id: poolId,
+          action,
+          sol_amount: sol ?? null,
+          token_amount: token ?? null,
+          lp_tokens: lp ?? null,
+          tx_signature: tx || null,
+        }),
+      });
+    } catch (err) {
+      console.error(`Failed to record ${action} position:`, err);
+    }
+  }, [address]);
 
   // Transaction status
   const [txStatus, setTxStatus] = useState(null);
@@ -276,6 +301,10 @@ export default function LiquidityPage() {
       const transaction = Transaction.from(txBytes);
 
       const txSignature = await executeTx(transaction, 'Buy Tokens');
+      await recordPosition('buy', swapPool.poolId || swapPool.id, {
+        sol: parseFloat(swapAmount),
+        tx: txSignature,
+      });
 
       setSwapResult({
         type: 'buy',
@@ -322,6 +351,10 @@ export default function LiquidityPage() {
       const transaction = Transaction.from(txBytes);
 
       const txSignature = await executeTx(transaction, 'Sell Tokens');
+      await recordPosition('sell', swapPool.poolId || swapPool.id, {
+        token: parseInt(swapAmount),
+        tx: txSignature,
+      });
 
       setSwapResult({
         type: 'sell',
@@ -369,6 +402,12 @@ export default function LiquidityPage() {
 
       const txSignature = await executeTx(transaction, 'Add Liquidity');
 
+      await recordPosition('add_liquidity', liqPool.poolId || liqPool.id, {
+        sol: parseFloat(liqSolAmount || '0'),
+        token: parseInt(liqTokenAmount || '0'),
+        tx: txSignature,
+      });
+
       setLiqResult({
         type: 'add',
         solAmount: parseFloat(liqSolAmount || '0'),
@@ -389,22 +428,29 @@ export default function LiquidityPage() {
   // Remove liquidity
   const handleRemoveLiquidity = async (e) => {
     e.preventDefault();
-    if (!isConnected || !liqPool || !liqSolAmount) return;
+    if (!isConnected || !liqPool || !liqLpAmount) return;
+
+    const mintAddress = liqPool.mint || liqPool.mintAddress || liqPool.pool_address || liqPool.curveAddress || liqPool.curve_address;
 
     setLiqProcessing(true);
     setLiqResult(null);
     setTxError(null);
 
     try {
-      // liqSolAmount is used as lp_tokens for remove
+      // Snapshot reserves before removal to compute returned amounts
+      let before = null;
+      try {
+        if (connection) before = await getBondingCurveState(connection, mintAddress);
+      } catch (err) { /* non-fatal */ }
+
       const res = await fetch(API_BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'remove_liquidity',
           wallet: address,
-          mint_address: liqPool.mint || liqPool.mintAddress || liqPool.pool_address,
-          lp_tokens: liqSolAmount,
+          mint_address: mintAddress,
+          lp_tokens: liqLpAmount,
           network,
         }),
       });
@@ -418,12 +464,34 @@ export default function LiquidityPage() {
 
       const txSignature = await executeTx(transaction, 'Remove Liquidity');
 
+      // Derive returned amounts from the on-chain reserve delta
+      let solOut = 0;
+      let tokenOut = 0;
+      if (before) {
+        try {
+          if (connection) {
+            const after = await getBondingCurveState(connection, mintAddress);
+            if (after) {
+              solOut = Math.max(0, before.solReserves - after.solReserves) / 1e9;
+              tokenOut = Math.max(0, before.tokenReserves - after.tokenReserves);
+            }
+          }
+        } catch (err) { /* non-fatal */ }
+      }
+
+      await recordPosition('remove_liquidity', liqPool.poolId || liqPool.id, {
+        sol: solOut || null,
+        token: tokenOut || null,
+        lp: parseInt(liqLpAmount),
+        tx: txSignature,
+      });
+
       setLiqResult({
         type: 'remove',
-        lpTokens: parseInt(liqSolAmount),
+        lpTokens: parseInt(liqLpAmount),
         txSignature,
       });
-      setLiqSolAmount('');
+      setLiqLpAmount('');
       loadPools();
       loadPositions();
     } catch (err) {
@@ -432,6 +500,52 @@ export default function LiquidityPage() {
       setLiqProcessing(false);
     }
   };
+
+  // Migrate pool to DEX (graduation)
+  const handleMigrate = async () => {
+    if (!isConnected || !searchedPool) return;
+    if (!confirm('Migrate this pool to a DEX? All remaining SOL and tokens will be returned to your wallet.')) return;
+
+    setLiqProcessing(true);
+    setTxError(null);
+
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'migrate',
+          wallet: address,
+          mint_address: searchedPool.mintAddress || searchedPool.mint || searchedPool.curveAddress,
+          network,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const { Transaction } = await import('@solana/web3.js');
+      const txBytes = Uint8Array.from(atob(data.transaction), c => c.charCodeAt(0));
+      const transaction = Transaction.from(txBytes);
+
+      const txSignature = await executeTx(transaction, 'Migrate to DEX');
+
+      await recordPosition('migrate', searchedPool.poolId, { tx: txSignature });
+
+      await handleSearchPool({ preventDefault: () => {} });
+      loadPools();
+      loadPositions();
+    } catch (err) {
+      setTxError(err.message);
+    } finally {
+      setLiqProcessing(false);
+    }
+  };
+
+  // Available LP for the selected pool (from D1 positions)
+  const availableLp = (myPositions.find(
+    (p) => p.pool_id === searchedPool?.poolId || p.curve_address === searchedPool?.curveAddress
+  )?.lp_tokens) || 0;
 
   // Preview calculations
   const previewTokensOut = swapAmount && swapPool && swapMode === 'buy'
@@ -533,8 +647,8 @@ export default function LiquidityPage() {
                         <span className="stat-mono address-text">{shortenAddress(searchedPool.creator)}</span>
                       </div>
                     </div>
-                    <span className={`badge ${searchedPool.status === 'active' ? 'badge-success' : searchedPool.status === 'paused' ? 'badge-warning' : 'badge-muted'}`}>
-                      {searchedPool.status === 'active' ? 'Active' : searchedPool.status === 'paused' ? 'Paused' : 'Closed'}
+                    <span className={`badge ${searchedPool.status === 'active' ? 'badge-success' : searchedPool.status === 'paused' ? 'badge-warning' : searchedPool.status === 'migrated' ? 'badge-success' : 'badge-muted'}`}>
+                      {searchedPool.status === 'active' ? 'Active' : searchedPool.status === 'paused' ? 'Paused' : searchedPool.status === 'migrated' ? 'Migrated to DEX' : 'Closed'}
                     </span>
                   </div>
 
@@ -582,6 +696,11 @@ export default function LiquidityPage() {
                       {address === searchedPool.creator && (
                         <button className="btn btn-secondary btn-sm" onClick={() => { setLiqPool(searchedPool); }}>
                           Manage Liquidity
+                        </button>
+                      )}
+                      {(searchedPool.progress || 0) >= 100 && address === searchedPool.creator && (
+                        <button className="btn btn-danger btn-sm" onClick={handleMigrate} disabled={liqProcessing}>
+                          {liqProcessing ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Migrate to DEX'}
                         </button>
                       )}
                     </div>
@@ -871,10 +990,10 @@ export default function LiquidityPage() {
             )}
 
             {/* Manage Liquidity Panel */}
-            {searchedPool && address === searchedPool.creator && (
+            {searchedPool && isConnected && (
               <section className="card liq-panel animate-fade-in-up">
                 <h2 className="panel-title">Manage Liquidity</h2>
-                <p className="panel-desc">Add or remove liquidity from your pool.</p>
+                <p className="panel-desc">Add or remove liquidity from the pool. Any wallet can provide liquidity.</p>
 
                 <div className="swap-tabs">
                   <button
@@ -938,10 +1057,10 @@ export default function LiquidityPage() {
                         placeholder="100"
                         min="1"
                         required
-                        value={liqSolAmount}
-                        onChange={(e) => setLiqSolAmount(e.target.value)}
+                        value={liqLpAmount}
+                        onChange={(e) => setLiqLpAmount(e.target.value)}
                       />
-                      <span className="input-hint">You will receive proportional SOL and tokens back.</span>
+                      <span className="input-hint">Available: {availableLp.toLocaleString()} LP. You will receive proportional SOL and tokens back.</span>
                     </div>
                     <button
                       type="submit"
