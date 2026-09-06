@@ -1,3 +1,4 @@
+# fix: no-op for workflow path trigger (solana release asset URL) — 2026-09-06
 [toolchain]
 solana_version = "4.2.2"
 
