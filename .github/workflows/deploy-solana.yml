@@ -59,7 +59,7 @@ jobs:
       - name: Switch to rust 1.98 for program build
         run: |
           rustup toolchain install 1.98.0 --profile minimal --no-self-update
-          echo "$HOME/.rustup/toolchains/1.98.0-x86_64-unknown-linux-gnu/bin" >> "$GITHUB_PATH"
+          rustup default 1.98.0
 
       - name: Airdrop deployer (best-effort)
         run: |
