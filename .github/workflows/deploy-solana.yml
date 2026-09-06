@@ -16,11 +16,10 @@ env:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
-      # time 0.3.29 (anchor-cli dep) fails to compile on rustc >= 1.80 with the
-      # `parsing` feature (E0282). 1.79.0 is the newest verified-working pin.
       - uses: dtolnay/rust-toolchain@1.79.0
 
       - name: Install deployer keypair
@@ -68,7 +67,8 @@ jobs:
           rustup toolchain install 1.98.0 --profile minimal --no-self-update
           rustup default 1.98.0
 
-      - name: Airdrop deployer (best-effort)
+      - name: Airdrop deployer (devnet only)
+        if: github.ref_name != 'main'
         run: |
           for i in 1 2 3; do
             solana --url https://api.devnet.solana.com airdrop 2 && break
@@ -77,11 +77,17 @@ jobs:
 
       - name: Build program
         run: |
-          anchor build
-          # anchor build puts .so in programs/bonding_curve/target/deploy/
-          # Copy to target/deploy/ for anchor deploy
-          mkdir -p target/deploy
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            anchor build -- --features mainnet
+          else
+            anchor build
+          fi
           cp programs/bonding_curve/target/deploy/bonding_curve.so target/deploy/bonding_curve.so
 
-      - name: Deploy program to devnet
+      - name: Deploy to devnet
+        if: github.ref_name != 'main'
         run: anchor deploy --provider.cluster devnet
+
+      - name: Deploy to mainnet
+        if: github.ref_name == 'main'
+        run: anchor deploy --provider.cluster mainnet
