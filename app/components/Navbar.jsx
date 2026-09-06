@@ -5,6 +5,98 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/providers/AuthProvider';
 
+const NAV_ICONS = {
+  home: (
+    <>
+      <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </>
+  ),
+  explore: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </>
+  ),
+  liquidity: <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />,
+  create: (
+    <>
+      <path d="M12 3l1.9 5.7L19.5 10l-5.6 1.3L12 17l-1.9-5.7L4.5 10l5.6-1.3L12 3z" />
+      <line x1="19" y1="15" x2="19" y2="20" />
+      <line x1="16.5" y1="17.5" x2="21.5" y2="17.5" />
+    </>
+  ),
+  chat: (
+    <>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="8" y1="9" x2="16" y2="9" />
+      <line x1="8" y1="13" x2="13" y2="13" />
+    </>
+  ),
+  dashboard: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </>
+  ),
+  blog: (
+    <>
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </>
+  ),
+  faq: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+    </>
+  ),
+  activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />,
+  barChart: (
+    <>
+      <line x1="12" y1="20" x2="12" y2="10" />
+      <line x1="18" y1="20" x2="18" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="16" />
+    </>
+  ),
+  logOut: (
+    <>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </>
+  ),
+};
+
+function NavIcon({ name, size = 16 }) {
+  return (
+    <svg
+      className="nav-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {NAV_ICONS[name]}
+    </svg>
+  );
+}
+
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
@@ -12,28 +104,27 @@ export default function Navbar() {
   const { user, logout } = useAuth();
 
   const isAdmin = user && user.role === 'admin';
-  const isHome = pathname === '/';
 
   const PRIMARY_LINKS = [
-    { href: '/', label: 'Home' },
-    { href: '/explore', label: 'Explore' },
-    { href: '/liquidity', label: 'Liquidity' },
+    { href: '/', label: 'Home', icon: 'home' },
+    { href: '/explore', label: 'Explore', icon: 'explore' },
+    { href: '/liquidity', label: 'Liquidity', icon: 'liquidity' },
   ];
 
   const SECONDARY_LINKS = [
-    { href: '/create', label: 'Create Token' },
-    { href: '/chat', label: 'Community Chat' },
-    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/create', label: 'Create Token', icon: 'create' },
+    { href: '/chat', label: 'Community Chat', icon: 'chat' },
+    { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   ];
 
   const TERTIARY_LINKS = [
-    { href: '/blog', label: 'Blog' },
-    { href: '/faq', label: 'FAQ' },
-    { href: '/contact', label: 'Contact Us' },
+    { href: '/blog', label: 'Blog', icon: 'blog' },
+    { href: '/faq', label: 'FAQ', icon: 'faq' },
+    { href: '/contact', label: 'Contact Us', icon: 'mail' },
   ];
 
   const handleToggleMobile = () => {
-    setMobileOpen(!mobileOpen);
+    setMobileOpen((prev) => !prev);
   };
 
   return (
@@ -58,7 +149,10 @@ export default function Navbar() {
               className={`navbar-link ${pathname === link.href ? 'active' : ''}`}
               id={`nav-link-${link.label.toLowerCase()}`}
             >
-              {link.label}
+              <span className="nav-link-icon">
+                <NavIcon name={link.icon} />
+              </span>
+              <span className="nav-link-label">{link.label}</span>
               {pathname === link.href && <span className="nav-dot" />}
             </Link>
           ))}
@@ -68,20 +162,32 @@ export default function Navbar() {
             onMouseEnter={() => setActiveDropdown('apps')}
             onMouseLeave={() => setActiveDropdown(null)}
           >
-            <button className={`dropdown-trigger ${SECONDARY_LINKS.some(l => pathname === l.href) ? 'active' : ''}`}>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={activeDropdown === 'apps'}
+              aria-controls="menu-apps"
+              className={`dropdown-trigger ${SECONDARY_LINKS.some((l) => pathname === l.href) ? 'active' : ''}`}
+            >
+              <span className="nav-link-icon">
+                <NavIcon name="dashboard" />
+              </span>
               Apps
               <svg className={`chevron ${activeDropdown === 'apps' ? 'open' : ''}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="m6 9 6 6 6-6"/>
               </svg>
             </button>
-            <div className="dropdown-menu">
+            <div className="dropdown-menu" id="menu-apps">
               {SECONDARY_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={`dropdown-link ${pathname === link.href ? 'active' : ''}`}
                 >
-                  {link.label}
+                  <span className="dropdown-link-icon">
+                    <NavIcon name={link.icon} />
+                  </span>
+                  <span className="dropdown-link-label">{link.label}</span>
                 </Link>
               ))}
             </div>
@@ -92,20 +198,32 @@ export default function Navbar() {
             onMouseEnter={() => setActiveDropdown('resources')}
             onMouseLeave={() => setActiveDropdown(null)}
           >
-            <button className={`dropdown-trigger ${TERTIARY_LINKS.some(l => pathname === l.href) ? 'active' : ''}`}>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={activeDropdown === 'resources'}
+              aria-controls="menu-resources"
+              className={`dropdown-trigger ${TERTIARY_LINKS.some((l) => pathname === l.href) ? 'active' : ''}`}
+            >
+              <span className="nav-link-icon">
+                <NavIcon name="blog" />
+              </span>
               Resources
               <svg className={`chevron ${activeDropdown === 'resources' ? 'open' : ''}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="m6 9 6 6 6-6"/>
               </svg>
             </button>
-            <div className="dropdown-menu">
+            <div className="dropdown-menu" id="menu-resources">
               {TERTIARY_LINKS.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={`dropdown-link ${pathname === link.href ? 'active' : ''}`}
                 >
-                  {link.label}
+                  <span className="dropdown-link-icon">
+                    <NavIcon name={link.icon} />
+                  </span>
+                  <span className="dropdown-link-label">{link.label}</span>
                 </Link>
               ))}
             </div>
@@ -126,32 +244,44 @@ export default function Navbar() {
                 <span className="navbar-user-name">{user.name || user.email.split('@')[0]}</span>
                 <span className="navbar-user-badge">{user.role === 'admin' ? 'Admin' : 'User'}</span>
               </div>
-              
+
               <div className="dropdown-menu dropdown-menu-right">
                 <div className="dropdown-header">
                   <p className="dropdown-user-email">{user.email}</p>
                 </div>
                 <div className="divider" style={{ margin: '4px 0' }} />
                 <Link href="/dashboard" className={`dropdown-link ${pathname === '/dashboard' ? 'active' : ''}`}>
-                  My Dashboard
+                  <span className="dropdown-link-icon">
+                    <NavIcon name="dashboard" />
+                  </span>
+                  <span className="dropdown-link-label">My Dashboard</span>
                 </Link>
-                
+
                 {isAdmin && (
                   <>
                     <div className="divider" style={{ margin: '4px 0' }} />
                     <div className="dropdown-section-title">Admin Console</div>
                     <Link href="/admin" className={`dropdown-link admin-nav-link ${pathname === '/admin' ? 'active' : ''}`}>
-                      System Status
+                      <span className="dropdown-link-icon">
+                        <NavIcon name="activity" />
+                      </span>
+                      <span className="dropdown-link-label">System Status</span>
                     </Link>
                     <Link href="/analytics" className={`dropdown-link admin-nav-link ${pathname === '/analytics' ? 'active' : ''}`}>
-                      Platform Analytics
+                      <span className="dropdown-link-icon">
+                        <NavIcon name="barChart" />
+                      </span>
+                      <span className="dropdown-link-label">Platform Analytics</span>
                     </Link>
                   </>
                 )}
-                
+
                 <div className="divider" style={{ margin: '4px 0' }} />
                 <button className="dropdown-link logout-btn" onClick={logout}>
-                  Log Out
+                  <span className="dropdown-link-icon">
+                    <NavIcon name="logOut" />
+                  </span>
+                  <span className="dropdown-link-label">Log Out</span>
                 </button>
               </div>
             </div>
@@ -187,7 +317,10 @@ export default function Navbar() {
                   className={`navbar-mobile-link ${pathname === link.href ? 'active' : ''}`}
                   onClick={() => setMobileOpen(false)}
                 >
-                  {link.label}
+                  <span className="mobile-link-icon">
+                    <NavIcon name={link.icon} />
+                  </span>
+                  <span>{link.label}</span>
                 </Link>
               ))}
             </div>
@@ -201,7 +334,10 @@ export default function Navbar() {
                   className={`navbar-mobile-link ${pathname === link.href ? 'active' : ''}`}
                   onClick={() => setMobileOpen(false)}
                 >
-                  {link.label}
+                  <span className="mobile-link-icon">
+                    <NavIcon name={link.icon} />
+                  </span>
+                  <span>{link.label}</span>
                 </Link>
               ))}
             </div>
@@ -215,7 +351,10 @@ export default function Navbar() {
                   className={`navbar-mobile-link ${pathname === link.href ? 'active' : ''}`}
                   onClick={() => setMobileOpen(false)}
                 >
-                  {link.label}
+                  <span className="mobile-link-icon">
+                    <NavIcon name={link.icon} />
+                  </span>
+                  <span>{link.label}</span>
                 </Link>
               ))}
             </div>
@@ -228,14 +367,20 @@ export default function Navbar() {
                   className={`navbar-mobile-link admin-nav-link ${pathname === '/admin' ? 'active' : ''}`}
                   onClick={() => setMobileOpen(false)}
                 >
-                  System Status
+                  <span className="mobile-link-icon">
+                    <NavIcon name="activity" />
+                  </span>
+                  <span>System Status</span>
                 </Link>
                 <Link
                   href="/analytics"
                   className={`navbar-mobile-link admin-nav-link ${pathname === '/analytics' ? 'active' : ''}`}
                   onClick={() => setMobileOpen(false)}
                 >
-                  Platform Analytics
+                  <span className="mobile-link-icon">
+                    <NavIcon name="barChart" />
+                  </span>
+                  <span>Platform Analytics</span>
                 </Link>
               </div>
             )}
@@ -305,14 +450,6 @@ export default function Navbar() {
           letter-spacing: -0.02em;
         }
 
-        .nav-center {
-          display: flex;
-          align-items: center;
-          gap: var(--space-6);
-          flex: 1;
-          justify-content: center;
-        }
-
         .navbar-links {
           display: flex;
           align-items: center;
@@ -323,25 +460,41 @@ export default function Navbar() {
 
         .navbar-link {
           position: relative;
-          font-size: var(--text-sm);
-          font-weight: 500;
-          color: var(--body);
-          padding: var(--space-2) 0;
-          transition: color var(--transition-fast);
-          display: flex;
-          flex-direction: column;
+          display: inline-flex;
           align-items: center;
+          gap: 6px;
+          padding: 8px 10px;
+          border-radius: var(--radius-pill);
+          font-size: var(--text-sm);
+          font-weight: 600;
+          color: var(--body-strong);
+          transition: color var(--transition-fast), background var(--transition-fast);
           white-space: nowrap;
+          text-decoration: none;
         }
 
         .navbar-link:hover,
         .navbar-link.active {
           color: var(--ink);
+          background: var(--bg-surface-soft);
+        }
+
+        .nav-link-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .nav-link-label {
+          line-height: 1;
         }
 
         .nav-dot {
           position: absolute;
-          bottom: -4px;
+          bottom: 2px;
+          left: 50%;
+          transform: translateX(-50%);
           width: 4px;
           height: 4px;
           background: var(--brand-mint);
@@ -357,22 +510,25 @@ export default function Navbar() {
         .dropdown-trigger {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+          gap: 7px;
           background: transparent;
           border: none;
           font-family: var(--font-sans);
           font-size: var(--text-sm);
-          font-weight: 500;
-          color: ${isHome ? 'rgba(255,255,255,0.85)' : 'var(--body)'};
+          font-weight: 600;
+          color: var(--body-strong);
           cursor: pointer;
-          padding: var(--space-2) var(--space-1);
-          transition: color var(--transition-fast);
+          padding: 8px 10px;
+          border-radius: var(--radius-pill);
+          transition: color var(--transition-fast), background var(--transition-fast);
           white-space: nowrap;
+          text-decoration: none;
         }
 
         .dropdown-trigger:hover,
         .dropdown-trigger.active {
-          color: ${isHome ? '#ffffff' : 'var(--ink)'};
+          color: var(--ink);
+          background: var(--bg-surface-soft);
         }
 
         .chevron {
@@ -385,14 +541,17 @@ export default function Navbar() {
 
         .dropdown-menu {
           position: absolute;
-          top: calc(100% + 8px);
+          top: calc(100% + 10px);
           left: 50%;
           transform: translateX(-50%) translateY(8px);
           background: var(--bg-canvas);
           border: 1px solid var(--hairline);
           border-radius: var(--radius-lg);
-          padding: var(--space-2) 0;
-          min-width: 200px;
+          padding: 8px;
+          min-width: 230px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
           box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
           opacity: 0;
           pointer-events: none;
@@ -417,14 +576,17 @@ export default function Navbar() {
         }
 
         .dropdown-link {
-          display: block;
+          display: flex;
+          align-items: center;
+          gap: 10px;
           width: 100%;
-          padding: 10px 18px;
+          padding: 9px 12px;
+          border-radius: 10px;
           font-size: var(--text-sm);
           text-align: left;
           background: transparent;
           border: none;
-          color: var(--body);
+          color: var(--body-strong);
           cursor: pointer;
           text-decoration: none;
           transition: background var(--transition-fast), color var(--transition-fast);
@@ -441,8 +603,26 @@ export default function Navbar() {
           font-weight: 600;
         }
 
+        .dropdown-link-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: var(--muted);
+          transition: color var(--transition-fast);
+        }
+
+        .dropdown-link:hover .dropdown-link-icon,
+        .dropdown-link.active .dropdown-link-icon {
+          color: var(--brand-pink);
+        }
+
+        .dropdown-link-label {
+          line-height: 1.2;
+        }
+
         .dropdown-header {
-          padding: 8px 18px 4px;
+          padding: 8px 12px 6px;
         }
 
         .dropdown-user-email {
@@ -458,11 +638,7 @@ export default function Navbar() {
           letter-spacing: 0.12em;
           text-transform: uppercase;
           color: var(--brand-pink);
-          padding: 6px 18px 2px;
-        }
-
-        .admin-nav-link {
-          color: var(--body);
+          padding: 6px 12px 4px;
         }
 
         .admin-nav-link:hover {
@@ -474,7 +650,11 @@ export default function Navbar() {
         }
 
         .logout-btn:hover {
-          background: rgba(239, 68, 68, 0.05);
+          background: rgba(239, 68, 68, 0.06);
+          color: var(--error);
+        }
+
+        .logout-btn:hover .dropdown-link-icon {
           color: var(--error);
         }
 
@@ -538,7 +718,7 @@ export default function Navbar() {
         .hamburger-line {
           width: 100%;
           height: 2px;
-          background-color: ${isHome ? '#ffffff' : 'var(--ink)'};
+          background-color: var(--ink);
           border-radius: var(--radius-pill);
           transition: all var(--transition-base);
         }
@@ -576,7 +756,7 @@ export default function Navbar() {
         .mobile-section {
           display: flex;
           flex-direction: column;
-          gap: var(--space-2);
+          gap: 2px;
         }
 
         .mobile-section-label {
@@ -590,16 +770,34 @@ export default function Navbar() {
         }
 
         .navbar-mobile-link {
+          display: flex;
+          align-items: center;
+          gap: 10px;
           font-size: var(--text-base);
           font-weight: 600;
-          color: var(--body);
-          padding: var(--space-2) 0;
+          color: var(--body-strong);
+          padding: var(--space-3) 4px;
           border-bottom: 1px solid var(--hairline-soft);
+          text-decoration: none;
         }
 
         .navbar-mobile-link.active {
           color: var(--brand-pink);
           border-color: var(--brand-pink);
+        }
+
+        .mobile-link-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: var(--muted);
+          transition: color var(--transition-fast);
+        }
+
+        .navbar-mobile-link:hover .mobile-link-icon,
+        .navbar-mobile-link.active .mobile-link-icon {
+          color: var(--brand-pink);
         }
 
         .mobile-auth-row {
