@@ -1,5 +1,6 @@
 # Wrangler/local artifacts
 .wrangler/
+wrangler.env.*.jsonc
 node_modules/
 .next/
 .deploy/

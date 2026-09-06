@@ -2,22 +2,59 @@ name: Deploy Cloudflare
 
 on:
   push:
-    branches: [main]
+    branches: [dev, qa, main]
     paths:
       - 'app/**'
       - 'worker.js'
       - 'wrangler.jsonc'
       - 'wrangler.render.jsonc'
+      - 'scripts/gen-wrangler-config.mjs'
       - 'migrations/**'
       - 'open-next.config.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (dev, qa, main)'
+        required: false
+        default: dev
+        type: choice
+        options: [dev, qa, main]
+
+concurrency:
+  group: deploy-cloudflare-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  determine-environment:
+    name: Determine environment
     runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set.outputs.environment }}
+    steps:
+      - name: Resolve target environment
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy to ${{ needs.determine-environment.outputs.environment }}
+    needs: determine-environment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    environment:
+      name: ${{ needs.determine-environment.outputs.environment }}
+      url: ${{ needs.determine-environment.outputs.environment == 'main' && 'https://mememint.snipercryptotradingbot.workers.dev' || format('https://mememint-{0}.snipercryptotradingbot.workers.dev', needs.determine-environment.outputs.environment) }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,29 +72,39 @@ jobs:
 
       - name: Write .env.local
         env:
+          TARGET: ${{ needs.determine-environment.outputs.environment }}
+          ENV_LOCAL_DEV: ${{ secrets.ENV_LOCAL_DEV }}
+          ENV_LOCAL_QA: ${{ secrets.ENV_LOCAL_QA }}
           ENV_LOCAL: ${{ secrets.ENV_LOCAL }}
-        run: printf '%s' "$ENV_LOCAL" > .env.local
+        run: |
+          case "$TARGET" in
+            main) printf '%s' "$ENV_LOCAL" > .env.local ;;
+            qa)   printf '%s' "${ENV_LOCAL_QA:-$ENV_LOCAL}" > .env.local ;;
+            dev)  printf '%s' "${ENV_LOCAL_DEV:-$ENV_LOCAL}" > .env.local ;;
+          esac
+          test -s .env.local || { echo "missing ENV_LOCAL secret for environment $TARGET"; exit 1; }
 
       - name: Build frontend (OpenNext)
         run: pnpm exec opennextjs-cloudflare build
+
+      - name: Generate per-environment wrangler configs
+        run: node scripts/gen-wrangler-config.mjs ${{ needs.determine-environment.outputs.environment }}
 
       - name: Build secrets payload from .env.local
         run: |
           node -e 'const fs=require("fs");const c=fs.readFileSync(".env.local","utf8");const o={};for(const l of c.split("\n")){if(!l||l.startsWith("#"))continue;const i=l.indexOf("=");if(i<0)continue;o[l.slice(0,i).trim()]=l.slice(i+1).trim();}["NEXT_PUBLIC_PLATFORM_FEE_SOL","NEXT_PUBLIC_REVOKE_FEE_SOL","NEXT_PUBLIC_MIGRATE_FEE_SOL"].forEach(k=>delete o[k]);fs.writeFileSync("/tmp/secrets.json",JSON.stringify(o));'
 
-      - name: Set secrets (main worker)
-        env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: node_modules/.bin/wrangler secret bulk /tmp/secrets.json --config wrangler.jsonc
-
       - name: Set secrets (render worker)
-        run: node_modules/.bin/wrangler secret bulk /tmp/secrets.json --config wrangler.render.jsonc
+        run: node_modules/.bin/wrangler secret bulk /tmp/secrets.json --config wrangler.env.${{ needs.determine-environment.outputs.environment }}.render.jsonc
+
+      - name: Set secrets (main worker)
+        run: node_modules/.bin/wrangler secret bulk /tmp/secrets.json --config wrangler.env.${{ needs.determine-environment.outputs.environment }}.jsonc
 
       - name: Apply D1 migrations
-        run: node_modules/.bin/wrangler d1 migrations apply mememint-db --remote
+        run: node_modules/.bin/wrangler d1 migrations apply ${{ needs.determine-environment.outputs.environment == 'main' && 'mememint-db' || format('mememint-db-{0}', needs.determine-environment.outputs.environment) }} --remote --config wrangler.env.${{ needs.determine-environment.outputs.environment }}.jsonc
 
       - name: Deploy render worker
-        run: node_modules/.bin/wrangler deploy --config wrangler.render.jsonc
+        run: node_modules/.bin/wrangler deploy --config wrangler.env.${{ needs.determine-environment.outputs.environment }}.render.jsonc
 
       - name: Deploy main worker
-        run: node_modules/.bin/wrangler deploy --config wrangler.jsonc
+        run: node_modules/.bin/wrangler deploy --config wrangler.env.${{ needs.determine-environment.outputs.environment }}.jsonc
