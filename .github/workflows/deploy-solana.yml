@@ -83,27 +83,31 @@ jobs:
             anchor build
           fi
 
-      - name: Debug - list build outputs
+      - name: Locate and copy .so
         run: |
-          echo "=== target/deploy ==="
-          ls -la target/deploy/ || echo "target/deploy missing"
-          echo "=== programs/bonding_curve/target/deploy ==="
-          ls -la programs/bonding_curve/target/deploy/ || echo "programs target deploy missing"
-          echo "=== keypair pubkey ==="
-          solana-keygen pubkey target/deploy/bonding_curve-keypair.json
-          echo "=== wallet ==="
-          solana address
-          echo "=== balance ==="
-          solana balance --url https://api.devnet.solana.com
+          echo "=== searching for bonding_curve.so ==="
+          SO_PATH=$(find . -name "bonding_curve.so" -not -path "*/deps/*" -not -path "*/debug/*" | head -1)
+          echo "Found: $SO_PATH"
+          if [ -z "$SO_PATH" ]; then
+            echo "ERROR: bonding_curve.so not found!"
+            exit 1
+          fi
+          cp "$SO_PATH" target/deploy/bonding_curve.so
+          echo "=== target/deploy contents ==="
+          ls -la target/deploy/
 
       - name: Deploy to devnet
         if: github.ref_name != 'main'
         run: |
-          ls -la target/deploy/bonding_curve.so
-          anchor deploy --provider.cluster devnet
+          solana program deploy \
+            --url https://api.devnet.solana.com \
+            --program-id target/deploy/bonding_curve-keypair.json \
+            target/deploy/bonding_curve.so
 
       - name: Deploy to mainnet
         if: github.ref_name == 'main'
         run: |
-          ls -la target/deploy/bonding_curve.so
-          anchor deploy --provider.cluster mainnet
+          solana program deploy \
+            --url https://api.mainnet-beta.solana.com \
+            --program-id target/deploy/bonding_curve-keypair.json \
+            target/deploy/bonding_curve.so
