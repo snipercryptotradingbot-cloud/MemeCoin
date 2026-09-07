@@ -82,12 +82,28 @@ jobs:
           else
             anchor build
           fi
-          cp programs/bonding_curve/target/deploy/bonding_curve.so target/deploy/bonding_curve.so
+
+      - name: Debug - list build outputs
+        run: |
+          echo "=== target/deploy ==="
+          ls -la target/deploy/ || echo "target/deploy missing"
+          echo "=== programs/bonding_curve/target/deploy ==="
+          ls -la programs/bonding_curve/target/deploy/ || echo "programs target deploy missing"
+          echo "=== keypair pubkey ==="
+          solana-keygen pubkey target/deploy/bonding_curve-keypair.json
+          echo "=== wallet ==="
+          solana address
+          echo "=== balance ==="
+          solana balance --url https://api.devnet.solana.com
 
       - name: Deploy to devnet
         if: github.ref_name != 'main'
-        run: anchor deploy --provider.cluster devnet
+        run: |
+          ls -la target/deploy/bonding_curve.so
+          anchor deploy --provider.cluster devnet
 
       - name: Deploy to mainnet
         if: github.ref_name == 'main'
-        run: anchor deploy --provider.cluster mainnet
+        run: |
+          ls -la target/deploy/bonding_curve.so
+          anchor deploy --provider.cluster mainnet
