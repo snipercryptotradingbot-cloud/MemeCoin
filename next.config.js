@@ -3,6 +3,9 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  env: {
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '719717535558-h6g3hhkphbcfvk5q4451iuava4s07agt.apps.googleusercontent.com',
+  },
   outputFileTracingRoot: '.',
   images: {
     remotePatterns: [
