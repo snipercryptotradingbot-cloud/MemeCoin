@@ -24,12 +24,26 @@ import {
   buildMigrateToDexTx,
 } from '@/app/lib/bondingCurve';
 import { getBondingCurveState } from '@/app/lib/poolState';
-import { createDlmmPool, addLiquidityByStrategy, getDlmmPool, getMeteoraPoolUrl, WSOL_MINT } from '@/app/lib/dlmm';
-import { initRaydium, createRaydiumPool, getRaydiumPoolUrl, getRaydiumSwapUrl } from '@/app/lib/raydium';
-import { PublicKey } from '@solana/web3.js';
 
 const API_BASE = '/api/liquidity';
 const POSITIONS_API = '/api/liquidity/positions';
+
+// Local URL builders (no external deps, safe for SSR)
+function getMeteoraPoolUrl(poolAddress, net = 'devnet') {
+  return net === 'mainnet'
+    ? `https://app.meteora.ag/pools/${poolAddress}`
+    : `https://app.devnet.meteora.ag/pools/${poolAddress}`;
+}
+function getRaydiumPoolUrl(poolAddress, net = 'devnet') {
+  return net === 'mainnet'
+    ? `https://raydium.io/pools/${poolAddress}`
+    : `https://api-v3-devnet.raydium.io/pools/detail/${poolAddress}`;
+}
+function getRaydiumSwapUrl(inputMint, outputMint, net = 'devnet') {
+  return net === 'mainnet'
+    ? `https://raydium.io/swap/?inputMint=${inputMint}&outputMint=${outputMint}`
+    : `https://api-v3-devnet.raydium.io/swap?inputMint=${inputMint}&outputMint=${outputMint}`;
+}
 
 export default function LiquidityPage() {
   const { address, isConnected } = useAppKitAccount();
@@ -434,10 +448,11 @@ export default function LiquidityPage() {
     setDlmmResult(null);
 
     try {
-      const { Keypair } = await import('@solana/web3.js');
+      const { Keypair, PublicKey: PK } = await import('@solana/web3.js');
       const { BN } = await import('@coral-xyz/anchor');
+      const { createDlmmPool, addLiquidityByStrategy, getDlmmPool } = await import('@/app/lib/dlmm');
 
-      const tokenMint = new PublicKey(searchedPool.mintAddress || searchedPool.mint);
+      const tokenMint = new PK(searchedPool.mintAddress || searchedPool.mint);
 
       // 1. Create the DLMM pool
       const { tx: createPoolTx } = await createDlmmPool(
@@ -445,7 +460,7 @@ export default function LiquidityPage() {
         tokenMint,
         dlmmFeeBps,
         network,
-        { creatorKey: new PublicKey(address) }
+        { creatorKey: new PK(address) }
       );
 
       setTxStatus('Creating DLMM pool...');
@@ -473,7 +488,7 @@ export default function LiquidityPage() {
 
       const addLiqTx = await addLiquidityByStrategy(
         dlmm, positionKeypair, totalXAmount, totalYAmount,
-        strategy, new PublicKey(address), 1
+        strategy, new PK(address), 1
       );
 
       await executeTx(addLiqTx, 'Add Initial Liquidity');
@@ -513,6 +528,7 @@ export default function LiquidityPage() {
     try {
       const { PublicKey: PK } = await import('@solana/web3.js');
       const { BN } = await import('@coral-xyz/anchor');
+      const { initRaydium, createRaydiumPool } = await import('@/app/lib/raydium');
 
       const tokenMint = new PK(searchedPool.mintAddress || searchedPool.mint);
 
