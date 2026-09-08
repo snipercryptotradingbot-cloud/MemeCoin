@@ -85,11 +85,102 @@ async function decodeJWT(token, secret) {
   return body;
 }
 
+// ---------- Password Hashing (Web Crypto API) ----------
+
+async function hashPassword(password, salt) {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: encoder.encode(salt), iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+  return btoa(String.fromCharCode(...new Uint8Array(bits)));
+}
+
+function generateSalt() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes));
+}
+
 // ---------- API Handlers ----------
 
 async function authHandler(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace('/api/auth', '');
+
+  // POST /api/auth/register — email + password
+  if (request.method === 'POST' && path === '/register') {
+    try {
+      const { name, email, password } = await request.json();
+      if (!email || !password) return json({ error: 'email and password are required' }, 400);
+      if (password.length < 8) return json({ error: 'Password must be at least 8 characters' }, 400);
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Check if user already exists
+      if (env.DB) {
+        const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(normalizedEmail).first();
+        if (existing) return json({ error: 'An account with this email already exists' }, 409);
+      }
+
+      const salt = generateSalt();
+      const passwordHash = await hashPassword(password, salt);
+      const userId = `email_${normalizedEmail.replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+
+      if (env.DB) {
+        await env.DB.prepare(
+          'INSERT INTO users (id, email, name, password_hash, provider, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(userId, normalizedEmail, name || normalizedEmail.split('@')[0], `${salt}:${passwordHash}`, 'email', 'user', new Date().toISOString()).run();
+      }
+
+      const token = await createJWT(
+        { sub: userId, email: normalizedEmail, name: name || normalizedEmail.split('@')[0], provider: 'email', role: 'user' },
+        env.JWT_SECRET
+      );
+
+      return json({
+        success: true, token,
+        user: { id: userId, email: normalizedEmail, name: name || normalizedEmail.split('@')[0], provider: 'email', role: 'user' },
+      });
+    } catch (err) {
+      console.error('Register error:', err);
+      return json({ error: 'Registration failed' }, 500);
+    }
+  }
+
+  // POST /api/auth/login — email + password
+  if (request.method === 'POST' && path === '/login') {
+    try {
+      const { email, password } = await request.json();
+      if (!email || !password) return json({ error: 'email and password are required' }, 400);
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      if (!env.DB) return json({ error: 'Auth service not configured' }, 500);
+
+      const user = await env.DB.prepare(
+        'SELECT id, email, name, password_hash, avatar, provider, role FROM users WHERE email = ?'
+      ).bind(normalizedEmail).first();
+
+      if (!user) return json({ error: 'No account found with this email' }, 401);
+      if (!user.password_hash) return json({ error: 'This account uses social login. Please sign in with Google or your wallet.' }, 400);
+
+      const [salt, storedHash] = user.password_hash.split(':');
+      const computedHash = await hashPassword(password, salt);
+
+      if (computedHash !== storedHash) return json({ error: 'Incorrect password' }, 401);
+
+      const token = await createJWT(
+        { sub: user.id, email: user.email, name: user.name, provider: user.provider, role: user.role },
+        env.JWT_SECRET
+      );
+
+      return json({
+        success: true, token,
+        user: { id: user.id, email: user.email, name: user.name, avatar: user.avatar, provider: user.provider, role: user.role },
+      });
+    } catch (err) {
+      console.error('Login error:', err);
+      return json({ error: 'Login failed' }, 500);
+    }
+  }
 
   // POST /api/auth/siws — Sign In With Solana
   if (request.method === 'POST' && path === '/siws') {

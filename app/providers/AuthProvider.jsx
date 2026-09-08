@@ -25,27 +25,33 @@ function useAuth() {
   }, []);
 
   const login = async (email, password) => {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    const fakeUser = {
-      id: 'local_' + email, email, name: email.split('@')[0],
-      avatar: null, provider: 'email', connectedWallet: null,
-      role: email.toLowerCase().includes('admin') ? 'admin' : 'user',
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(fakeUser));
-    setUser(fakeUser);
-    return fakeUser;
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Login failed');
+    localStorage.setItem(TOKEN_KEY, data.token);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
   };
 
   const register = async (name, email, password) => {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    const fakeUser = {
-      id: 'local_' + email, email, name,
-      avatar: null, provider: 'email', connectedWallet: null,
-      role: email.toLowerCase().includes('admin') ? 'admin' : 'user',
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(fakeUser));
-    setUser(fakeUser);
-    return fakeUser;
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    localStorage.setItem(TOKEN_KEY, data.token);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
   };
 
   const loginWithGoogle = useCallback(async () => {
