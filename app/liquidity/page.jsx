@@ -24,6 +24,8 @@ import {
   buildMigrateToDexTx,
 } from '@/app/lib/bondingCurve';
 import { getBondingCurveState } from '@/app/lib/poolState';
+import { createDlmmPool, addLiquidityByStrategy, getDlmmPool, getMeteoraPoolUrl, WSOL_MINT } from '@/app/lib/dlmm';
+import { PublicKey } from '@solana/web3.js';
 
 const API_BASE = '/api/liquidity';
 const POSITIONS_API = '/api/liquidity/positions';
@@ -68,6 +70,14 @@ export default function LiquidityPage() {
   // Liquidity state
   const [liqPool, setLiqPool] = useState(null);
   const [liqProcessing, setLiqProcessing] = useState(false);
+
+  // DLMM pool creation state (post-graduation)
+  const [dlmmSolAmount, setDlmmSolAmount] = useState('');
+  const [dlmmTokenAmount, setDlmmTokenAmount] = useState('');
+  const [dlmmFeeBps, setDlmmFeeBps] = useState(100);
+  const [dlmmCreating, setDlmmCreating] = useState(false);
+  const [dlmmResult, setDlmmResult] = useState(null);
+  const [dlmmError, setDlmmError] = useState(null);
 
   // Record a confirmed on-chain action to D1 (positions + activity log)
   const recordPosition = useCallback(async (action, poolId, { sol, token, lp, tx } = {}) => {
@@ -401,6 +411,85 @@ export default function LiquidityPage() {
       setTxError(err.message);
     } finally {
       setLiqProcessing(false);
+    }
+  };
+
+  // Create DLMM pool (post-graduation)
+  const handleCreateDlmmPool = async (e) => {
+    e.preventDefault();
+    if (!isConnected || !walletProvider || !connection || !searchedPool) return;
+    if (!dlmmSolAmount || !dlmmTokenAmount) return;
+
+    setDlmmCreating(true);
+    setDlmmError(null);
+    setDlmmResult(null);
+
+    try {
+      const { Keypair } = await import('@solana/web3.js');
+      const { BN } = await import('@coral-xyz/anchor');
+
+      const tokenMint = new PublicKey(searchedPool.mintAddress || searchedPool.mint);
+
+      // 1. Create the DLMM pool
+      const { tx: createPoolTx } = await createDlmmPool(
+        connection,
+        tokenMint,
+        dlmmFeeBps,
+        network,
+        { creatorKey: new PublicKey(address) }
+      );
+
+      setTxStatus('Creating DLMM pool...');
+      const poolTxSig = await executeTx(createPoolTx, 'Create DLMM Pool');
+
+      // Extract pool address from the transaction logs
+      // The DLMM program creates a new account; we need to find it
+      const poolAta = createPoolTx.instructions.find(
+        ix => ix.keys.some(k => k.pubkey.equals(tokenMint))
+      );
+
+      setTxStatus('DLMM pool created! Now adding liquidity...');
+
+      // 2. Initialize position + add liquidity
+      const dlmm = await getDlmmPool(connection, poolAta?.keys[0]?.pubkey || tokenMint);
+      const positionKeypair = Keypair.generate();
+
+      const totalXAmount = new BN(dlmmTokenAmount);
+      const totalYAmount = new BN(Math.floor(parseFloat(dlmmSolAmount) * 1e9));
+
+      const strategy = {
+        minBinId: -7,
+        maxBinId: 7,
+        strategyType: 0, // Spread
+      };
+
+      const addLiqTx = await addLiquidityByStrategy(
+        dlmm, positionKeypair, totalXAmount, totalYAmount,
+        strategy, new PublicKey(address), 1
+      );
+
+      await executeTx(addLiqTx, 'Add Initial Liquidity');
+
+      setDlmmResult({
+        poolAddress: poolAta?.keys[0]?.pubkey?.toBase58() || 'See Meteora',
+        txSignature: poolTxSig,
+      });
+
+      // Record to D1
+      await recordPosition('create_dlmm_pool', poolAta?.keys[0]?.pubkey?.toBase58() || searchedPool.poolId, {
+        sol: parseFloat(dlmmSolAmount),
+        token: parseInt(dlmmTokenAmount),
+        tx: poolTxSig,
+      });
+
+      loadPools();
+      loadPositions();
+    } catch (err) {
+      console.error('DLMM pool creation error:', err);
+      setDlmmError(err.message || 'Failed to create DLMM pool');
+    } finally {
+      setDlmmCreating(false);
+      setTxStatus(null);
     }
   };
 
@@ -854,17 +943,104 @@ export default function LiquidityPage() {
                 {searchedPool.status === 'migrated' ? (
                   <div>
                     <p className="panel-desc" style={{ marginBottom: 'var(--space-4)' }}>
-                      This pool has graduated to Meteora DLMM. Liquidity is now managed via the Meteora SDK.
+                      This pool has graduated to Meteora DLMM. Create a DLMM pool below or view on Meteora directly.
                     </p>
-                    {searchedPool.dlmmPool && searchedPool.dlmmPool !== '11111111111111111111111111111111' && (
-                      <a
-                        href={`https://app.meteora.ag/pools/${searchedPool.dlmmPool}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-primary btn-sm btn-full"
-                      >
-                        View on Meteora
-                      </a>
+
+                    {/* DLMM Pool Creation Form */}
+                    {!dlmmResult ? (
+                      <form onSubmit={handleCreateDlmmPool} className="create-pool-form">
+                        <div className="input-group">
+                          <label className="input-label">SOL Amount (Wrapped)</label>
+                          <div className="sol-input-wrap">
+                            <input
+                              type="number"
+                              className="input"
+                              placeholder="e.g. 3.5"
+                              min="0.1"
+                              step="0.1"
+                              required
+                              value={dlmmSolAmount}
+                              onChange={(e) => setDlmmSolAmount(e.target.value)}
+                            />
+                            <span className="sol-input-addon">SOL</span>
+                          </div>
+                          <span className="input-hint">Amount of SOL to provide as liquidity (will be wrapped to WSOL).</span>
+                        </div>
+
+                        <div className="input-group">
+                          <label className="input-label">Token Amount</label>
+                          <input
+                            type="number"
+                            className="input"
+                            placeholder="e.g. 500000000"
+                            min="1"
+                            required
+                            value={dlmmTokenAmount}
+                            onChange={(e) => setDlmmTokenAmount(e.target.value)}
+                          />
+                          <span className="input-hint">Amount of your token to provide as liquidity.</span>
+                        </div>
+
+                        <div className="input-group">
+                          <label className="input-label">Fee Tier</label>
+                          <div className="fee-presets">
+                            {[10, 50, 100, 200].map((bps) => (
+                              <button
+                                key={bps}
+                                type="button"
+                                className={`fee-preset-btn ${dlmmFeeBps === bps ? 'active' : ''}`}
+                                onClick={() => setDlmmFeeBps(bps)}
+                              >
+                                {bps / 100}%
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {dlmmError && (
+                          <div className="error-message">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            {dlmmError}
+                          </div>
+                        )}
+
+                        <button
+                          type="submit"
+                          className="btn btn-mint btn-lg btn-full"
+                          disabled={dlmmCreating || !isConnected || !dlmmSolAmount || !dlmmTokenAmount}
+                        >
+                          {dlmmCreating ? (
+                            <div className="spinner" style={{ width: 18, height: 18 }} />
+                          ) : (
+                            'Create DLMM Pool + Add Liquidity'
+                          )}
+                        </button>
+
+                        <a
+                          href={getMeteoraPoolUrl(searchedPool.mintAddress || searchedPool.mint, network)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary btn-sm btn-full"
+                          style={{ marginTop: 'var(--space-2)' }}
+                        >
+                          Create on Meteora App Instead
+                        </a>
+                      </form>
+                    ) : (
+                      <div className="success-toast animate-fade-in" style={{ marginTop: 'var(--space-3)' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        DLMM pool created successfully!
+                        <CopyButton text={dlmmResult.poolAddress} />
+                        <a
+                          href={getMeteoraPoolUrl(dlmmResult.poolAddress, network)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-primary btn-sm"
+                          style={{ marginLeft: 'auto' }}
+                        >
+                          View on Meteora
+                        </a>
+                      </div>
                     )}
                   </div>
                 ) : searchedPool.status === 'active' ? (
