@@ -59,7 +59,7 @@ function useAuth() {
     if (!clientId) throw new Error('Google OAuth is not configured. Set NEXT_PUBLIC_GOOGLE_CLIENT_ID.');
 
     return new Promise((resolve, reject) => {
-      const doAuth = async () => {
+      const doAuth = () => {
         try {
           window.google.accounts.id.initialize({
             client_id: clientId,
@@ -87,8 +87,17 @@ function useAuth() {
               }
             },
             cancel_on_tap_outside: false,
+            auto_select: false,
           });
-          window.google.accounts.id.prompt();
+
+          window.google.accounts.id.prompt((notification) => {
+            if (notification.isNotDisplayed()) {
+              const reason = notification.getNotDisplayedReason();
+              reject(new Error(`Google sign-in could not be shown: ${reason}. Check that your domain is in Authorized JavaScript Origins.`));
+            } else if (notification.isSkippedMoment()) {
+              reject(new Error('Google sign-in was skipped.'));
+            }
+          });
         } catch (err) {
           reject(err);
         }
