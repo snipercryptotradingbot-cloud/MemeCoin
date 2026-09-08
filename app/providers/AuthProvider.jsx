@@ -55,8 +55,15 @@ function useAuth() {
   };
 
   const loginWithGoogle = useCallback(async () => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (!clientId) throw new Error('Google OAuth is not configured. Set NEXT_PUBLIC_GOOGLE_CLIENT_ID.');
+    // Fetch Google Client ID from our API (avoids build-time env var issues)
+    let clientId;
+    try {
+      const configRes = await fetch('/api/config');
+      const configData = await configRes.json();
+      clientId = configData?.config?.googleClientId;
+    } catch {}
+
+    if (!clientId) throw new Error('Google OAuth is not configured.');
 
     return new Promise((resolve, reject) => {
       const doAuth = () => {

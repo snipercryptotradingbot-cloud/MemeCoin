@@ -960,6 +960,17 @@ export class ChatRoom {
   }
 }
 
+// ---------- Config Endpoint ----------
+
+async function configHandler(request, env) {
+  return json({
+    success: true,
+    config: {
+      googleClientId: env.GOOGLE_CLIENT_ID || env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
+    },
+  });
+}
+
 // ---------- Main Router ----------
 
 async function apiRouter(request, env) {
@@ -967,6 +978,7 @@ async function apiRouter(request, env) {
   const path = url.pathname;
 
   try {
+    if (path === '/api/config' || path === '/api/config/') return configHandler(request, env);
     if (path.startsWith('/api/auth')) return authHandler(request, env);
     if (path.startsWith('/api/chat')) return chatHandler(request, env);
     if (path.startsWith('/api/admin')) return adminHandler(request, env);
