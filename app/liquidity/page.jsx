@@ -25,6 +25,7 @@ import {
 } from '@/app/lib/bondingCurve';
 import { getBondingCurveState } from '@/app/lib/poolState';
 import { createDlmmPool, addLiquidityByStrategy, getDlmmPool, getMeteoraPoolUrl, WSOL_MINT } from '@/app/lib/dlmm';
+import { initRaydium, createRaydiumPool, getRaydiumPoolUrl, getRaydiumSwapUrl } from '@/app/lib/raydium';
 import { PublicKey } from '@solana/web3.js';
 
 const API_BASE = '/api/liquidity';
@@ -78,6 +79,14 @@ export default function LiquidityPage() {
   const [dlmmCreating, setDlmmCreating] = useState(false);
   const [dlmmResult, setDlmmResult] = useState(null);
   const [dlmmError, setDlmmError] = useState(null);
+
+  // DEX selection (meteora | raydium)
+  const [selectedDex, setSelectedDex] = useState('meteora');
+
+  // Raydium pool creation state
+  const [raydiumCreating, setRaydiumCreating] = useState(false);
+  const [raydiumResult, setRaydiumResult] = useState(null);
+  const [raydiumError, setRaydiumError] = useState(null);
 
   // Record a confirmed on-chain action to D1 (positions + activity log)
   const recordPosition = useCallback(async (action, poolId, { sol, token, lp, tx } = {}) => {
@@ -443,7 +452,6 @@ export default function LiquidityPage() {
       const poolTxSig = await executeTx(createPoolTx, 'Create DLMM Pool');
 
       // Extract pool address from the transaction logs
-      // The DLMM program creates a new account; we need to find it
       const poolAta = createPoolTx.instructions.find(
         ix => ix.keys.some(k => k.pubkey.equals(tokenMint))
       );
@@ -460,7 +468,7 @@ export default function LiquidityPage() {
       const strategy = {
         minBinId: -7,
         maxBinId: 7,
-        strategyType: 0, // Spread
+        strategyType: 0,
       };
 
       const addLiqTx = await addLiquidityByStrategy(
@@ -475,7 +483,6 @@ export default function LiquidityPage() {
         txSignature: poolTxSig,
       });
 
-      // Record to D1
       await recordPosition('create_dlmm_pool', poolAta?.keys[0]?.pubkey?.toBase58() || searchedPool.poolId, {
         sol: parseFloat(dlmmSolAmount),
         token: parseInt(dlmmTokenAmount),
@@ -489,6 +496,56 @@ export default function LiquidityPage() {
       setDlmmError(err.message || 'Failed to create DLMM pool');
     } finally {
       setDlmmCreating(false);
+      setTxStatus(null);
+    }
+  };
+
+  // Create Raydium AMM pool (post-graduation)
+  const handleCreateRaydiumPool = async (e) => {
+    e.preventDefault();
+    if (!isConnected || !walletProvider || !connection || !searchedPool) return;
+    if (!dlmmSolAmount || !dlmmTokenAmount) return;
+
+    setRaydiumCreating(true);
+    setRaydiumError(null);
+    setRaydiumResult(null);
+
+    try {
+      const { PublicKey: PK } = await import('@solana/web3.js');
+      const { BN } = await import('@coral-xyz/anchor');
+
+      const tokenMint = new PK(searchedPool.mintAddress || searchedPool.mint);
+
+      // Initialize Raydium SDK
+      const raydium = await initRaydium(connection, walletProvider, network);
+
+      const tokenAmount = new BN(dlmmTokenAmount);
+      const solAmount = new BN(Math.floor(parseFloat(dlmmSolAmount) * 1e9));
+
+      setTxStatus('Creating Raydium pool + market...');
+
+      const result = await createRaydiumPool(
+        raydium, tokenMint, 9, tokenAmount, solAmount, network
+      );
+
+      setRaydiumResult({
+        poolAddress: result.poolAddress,
+        txSignature: result.txSignatures?.[0] || 'Sent',
+      });
+
+      await recordPosition('create_raydium_pool', result.poolAddress || searchedPool.poolId, {
+        sol: parseFloat(dlmmSolAmount),
+        token: parseInt(dlmmTokenAmount),
+        tx: result.txSignatures?.[0],
+      });
+
+      loadPools();
+      loadPositions();
+    } catch (err) {
+      console.error('Raydium pool creation error:', err);
+      setRaydiumError(err.message || 'Failed to create Raydium pool');
+    } finally {
+      setRaydiumCreating(false);
       setTxStatus(null);
     }
   };
@@ -943,104 +1000,205 @@ export default function LiquidityPage() {
                 {searchedPool.status === 'migrated' ? (
                   <div>
                     <p className="panel-desc" style={{ marginBottom: 'var(--space-4)' }}>
-                      This pool has graduated to Meteora DLMM. Create a DLMM pool below or view on Meteora directly.
+                      This pool has graduated. Choose a DEX to create your liquidity pool.
                     </p>
 
-                    {/* DLMM Pool Creation Form */}
-                    {!dlmmResult ? (
-                      <form onSubmit={handleCreateDlmmPool} className="create-pool-form">
-                        <div className="input-group">
-                          <label className="input-label">SOL Amount (Wrapped)</label>
-                          <div className="sol-input-wrap">
+                    {/* DEX Selector Tabs */}
+                    <div className="swap-tabs" style={{ marginBottom: 'var(--space-4)' }}>
+                      <button
+                        className={`swap-tab ${selectedDex === 'meteora' ? 'active' : ''}`}
+                        onClick={() => { setSelectedDex('meteora'); setDlmmResult(null); setRaydiumResult(null); }}
+                      >
+                        Meteora DLMM
+                      </button>
+                      <button
+                        className={`swap-tab ${selectedDex === 'raydium' ? 'active' : ''}`}
+                        onClick={() => { setSelectedDex('raydium'); setDlmmResult(null); setRaydiumResult(null); }}
+                      >
+                        Raydium AMM
+                      </button>
+                    </div>
+
+                    {/* Meteora DLMM Panel */}
+                    {selectedDex === 'meteora' && (
+                      !dlmmResult ? (
+                        <form onSubmit={handleCreateDlmmPool} className="create-pool-form">
+                          <div className="input-group">
+                            <label className="input-label">SOL Amount (Wrapped)</label>
+                            <div className="sol-input-wrap">
+                              <input
+                                type="number"
+                                className="input"
+                                placeholder="e.g. 3.5"
+                                min="0.1"
+                                step="0.1"
+                                required
+                                value={dlmmSolAmount}
+                                onChange={(e) => setDlmmSolAmount(e.target.value)}
+                              />
+                              <span className="sol-input-addon">SOL</span>
+                            </div>
+                            <span className="input-hint">Liquidity in wrapped SOL (WSOL).</span>
+                          </div>
+
+                          <div className="input-group">
+                            <label className="input-label">Token Amount</label>
                             <input
                               type="number"
                               className="input"
-                              placeholder="e.g. 3.5"
-                              min="0.1"
-                              step="0.1"
+                              placeholder="e.g. 500000000"
+                              min="1"
                               required
-                              value={dlmmSolAmount}
-                              onChange={(e) => setDlmmSolAmount(e.target.value)}
+                              value={dlmmTokenAmount}
+                              onChange={(e) => setDlmmTokenAmount(e.target.value)}
                             />
-                            <span className="sol-input-addon">SOL</span>
+                            <span className="input-hint">Amount of your token to provide as liquidity.</span>
                           </div>
-                          <span className="input-hint">Amount of SOL to provide as liquidity (will be wrapped to WSOL).</span>
-                        </div>
 
-                        <div className="input-group">
-                          <label className="input-label">Token Amount</label>
-                          <input
-                            type="number"
-                            className="input"
-                            placeholder="e.g. 500000000"
-                            min="1"
-                            required
-                            value={dlmmTokenAmount}
-                            onChange={(e) => setDlmmTokenAmount(e.target.value)}
-                          />
-                          <span className="input-hint">Amount of your token to provide as liquidity.</span>
-                        </div>
-
-                        <div className="input-group">
-                          <label className="input-label">Fee Tier</label>
-                          <div className="fee-presets">
-                            {[10, 50, 100, 200].map((bps) => (
-                              <button
-                                key={bps}
-                                type="button"
-                                className={`fee-preset-btn ${dlmmFeeBps === bps ? 'active' : ''}`}
-                                onClick={() => setDlmmFeeBps(bps)}
-                              >
-                                {bps / 100}%
-                              </button>
-                            ))}
+                          <div className="input-group">
+                            <label className="input-label">Fee Tier</label>
+                            <div className="fee-presets">
+                              {[10, 50, 100, 200].map((bps) => (
+                                <button
+                                  key={bps}
+                                  type="button"
+                                  className={`fee-preset-btn ${dlmmFeeBps === bps ? 'active' : ''}`}
+                                  onClick={() => setDlmmFeeBps(bps)}
+                                >
+                                  {bps / 100}%
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
 
-                        {dlmmError && (
-                          <div className="error-message">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                            {dlmmError}
-                          </div>
-                        )}
-
-                        <button
-                          type="submit"
-                          className="btn btn-mint btn-lg btn-full"
-                          disabled={dlmmCreating || !isConnected || !dlmmSolAmount || !dlmmTokenAmount}
-                        >
-                          {dlmmCreating ? (
-                            <div className="spinner" style={{ width: 18, height: 18 }} />
-                          ) : (
-                            'Create DLMM Pool + Add Liquidity'
+                          {dlmmError && (
+                            <div className="error-message">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              {dlmmError}
+                            </div>
                           )}
-                        </button>
 
-                        <a
-                          href={getMeteoraPoolUrl(searchedPool.mintAddress || searchedPool.mint, network)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-secondary btn-sm btn-full"
-                          style={{ marginTop: 'var(--space-2)' }}
-                        >
-                          Create on Meteora App Instead
-                        </a>
-                      </form>
-                    ) : (
-                      <div className="success-toast animate-fade-in" style={{ marginTop: 'var(--space-3)' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                        DLMM pool created successfully!
-                        <CopyButton text={dlmmResult.poolAddress} />
-                        <a
-                          href={getMeteoraPoolUrl(dlmmResult.poolAddress, network)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-primary btn-sm"
-                          style={{ marginLeft: 'auto' }}
-                        >
-                          View on Meteora
-                        </a>
-                      </div>
+                          <button
+                            type="submit"
+                            className="btn btn-mint btn-lg btn-full"
+                            disabled={dlmmCreating || !isConnected || !dlmmSolAmount || !dlmmTokenAmount}
+                          >
+                            {dlmmCreating ? (
+                              <div className="spinner" style={{ width: 18, height: 18 }} />
+                            ) : (
+                              'Create Meteora DLMM Pool'
+                            )}
+                          </button>
+
+                          <a
+                            href={getMeteoraPoolUrl(searchedPool.mintAddress || searchedPool.mint, network)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary btn-sm btn-full"
+                            style={{ marginTop: 'var(--space-2)' }}
+                          >
+                            Create on Meteora App Instead
+                          </a>
+                        </form>
+                      ) : (
+                        <div className="success-toast animate-fade-in" style={{ marginTop: 'var(--space-3)' }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                          DLMM pool created successfully!
+                          <CopyButton text={dlmmResult.poolAddress} />
+                          <a
+                            href={getMeteoraPoolUrl(dlmmResult.poolAddress, network)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-primary btn-sm"
+                            style={{ marginLeft: 'auto' }}
+                          >
+                            View on Meteora
+                          </a>
+                        </div>
+                      )
+                    )}
+
+                    {/* Raydium AMM Panel */}
+                    {selectedDex === 'raydium' && (
+                      !raydiumResult ? (
+                        <form onSubmit={handleCreateRaydiumPool} className="create-pool-form">
+                          <div className="input-group">
+                            <label className="input-label">SOL Amount</label>
+                            <div className="sol-input-wrap">
+                              <input
+                                type="number"
+                                className="input"
+                                placeholder="e.g. 3.5"
+                                min="0.1"
+                                step="0.1"
+                                required
+                                value={dlmmSolAmount}
+                                onChange={(e) => setDlmmSolAmount(e.target.value)}
+                              />
+                              <span className="sol-input-addon">SOL</span>
+                            </div>
+                            <span className="input-hint">SOL liquidity (native, used as quote token).</span>
+                          </div>
+
+                          <div className="input-group">
+                            <label className="input-label">Token Amount</label>
+                            <input
+                              type="number"
+                              className="input"
+                              placeholder="e.g. 500000000"
+                              min="1"
+                              required
+                              value={dlmmTokenAmount}
+                              onChange={(e) => setDlmmTokenAmount(e.target.value)}
+                            />
+                            <span className="input-hint">Amount of your token to provide as liquidity.</span>
+                          </div>
+
+                          {raydiumError && (
+                            <div className="error-message">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              {raydiumError}
+                            </div>
+                          )}
+
+                          <button
+                            type="submit"
+                            className="btn btn-mint btn-lg btn-full"
+                            disabled={raydiumCreating || !isConnected || !dlmmSolAmount || !dlmmTokenAmount}
+                          >
+                            {raydiumCreating ? (
+                              <div className="spinner" style={{ width: 18, height: 18 }} />
+                            ) : (
+                              'Create Raydium AMM Pool'
+                            )}
+                          </button>
+
+                          <a
+                            href={getRaydiumSwapUrl('So11111111111111111111111111111111111111112', searchedPool.mintAddress || searchedPool.mint, network)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary btn-sm btn-full"
+                            style={{ marginTop: 'var(--space-2)' }}
+                          >
+                            Create on Raydium App Instead
+                          </a>
+                        </form>
+                      ) : (
+                        <div className="success-toast animate-fade-in" style={{ marginTop: 'var(--space-3)' }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                          Raydium pool created successfully!
+                          <CopyButton text={raydiumResult.poolAddress} />
+                          <a
+                            href={getRaydiumPoolUrl(raydiumResult.poolAddress, network)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-primary btn-sm"
+                            style={{ marginLeft: 'auto' }}
+                          >
+                            View on Raydium
+                          </a>
+                        </div>
+                      )
                     )}
                   </div>
                 ) : searchedPool.status === 'active' ? (
