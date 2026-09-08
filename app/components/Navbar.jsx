@@ -68,6 +68,12 @@ const NAV_ICONS = {
       <line x1="6" y1="20" x2="6" y2="16" />
     </>
   ),
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </>
+  ),
   logOut: (
     <>
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -232,11 +238,18 @@ export default function Navbar() {
 
         <div className="navbar-actions">
           {user ? (
-            <div
-              className="nav-item-dropdown user-menu-dropdown"
-              onMouseEnter={() => setActiveDropdown('user')}
-              onMouseLeave={() => setActiveDropdown(null)}
-            >
+            <>
+              <Link href="/settings" className="nav-bell" aria-label="Notifications">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+              </Link>
+              <div
+                className="nav-item-dropdown user-menu-dropdown"
+                onMouseEnter={() => setActiveDropdown('user')}
+                onMouseLeave={() => setActiveDropdown(null)}
+              >
               <div className="navbar-user-chip cursor-pointer">
                 <div className="avatar-placeholder">
                   {user.name ? user.name[0].toUpperCase() : 'U'}
@@ -248,6 +261,7 @@ export default function Navbar() {
               <div className="dropdown-menu dropdown-menu-right">
                 <div className="dropdown-header">
                   <p className="dropdown-user-email">{user.email}</p>
+                  {user.username && <p className="dropdown-user-handle">@{user.username}</p>}
                 </div>
                 <div className="divider" style={{ margin: '4px 0' }} />
                 <Link href="/dashboard" className={`dropdown-link ${pathname === '/dashboard' ? 'active' : ''}`}>
@@ -255,6 +269,12 @@ export default function Navbar() {
                     <NavIcon name="dashboard" />
                   </span>
                   <span className="dropdown-link-label">My Dashboard</span>
+                </Link>
+                <Link href="/settings" className={`dropdown-link ${pathname === '/settings' ? 'active' : ''}`}>
+                  <span className="dropdown-link-icon">
+                    <NavIcon name="settings" />
+                  </span>
+                  <span className="dropdown-link-label">Account Settings</span>
                 </Link>
 
                 {isAdmin && (
@@ -285,6 +305,7 @@ export default function Navbar() {
                 </button>
               </div>
             </div>
+            </>
           ) : (
             <div className="navbar-auth guest">
               <Link href="/login" className="btn btn-ghost btn-sm">Sign In</Link>
@@ -629,6 +650,29 @@ export default function Navbar() {
           font-size: var(--text-xs);
           color: var(--muted);
           word-break: break-all;
+        }
+
+        .dropdown-user-handle {
+          font-size: var(--text-xs);
+          color: var(--brand-mint-deep);
+          font-weight: 600;
+        }
+
+        .nav-bell {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          color: var(--muted);
+          transition: all var(--transition-fast);
+          position: relative;
+        }
+
+        .nav-bell:hover {
+          background: var(--bg-surface-card);
+          color: var(--ink);
         }
 
         .dropdown-section-title {

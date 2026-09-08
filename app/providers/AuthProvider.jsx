@@ -16,12 +16,37 @@ function useAuth() {
       const savedToken = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
       setUser(raw ? JSON.parse(raw) : null);
       setToken(savedToken || null);
+
+      if (savedToken) {
+        fetch('/api/auth/me', { headers: { Authorization: `Bearer ${savedToken}` } })
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (data?.user) {
+              setUser(data.user);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
+            }
+          })
+          .catch(() => {});
+      }
     } catch {
       setUser(null);
       setToken(null);
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  const claimReferral = useCallback(async (jwtToken) => {
+    try {
+      const ref = typeof window !== 'undefined' ? localStorage.getItem('mememint_ref') : null;
+      if (!ref || !jwtToken) return;
+      await fetch('/api/referrals/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwtToken}` },
+        body: JSON.stringify({ promoter_username: ref }),
+      });
+      localStorage.removeItem('mememint_ref');
+    } catch {}
   }, []);
 
   const login = async (email, password) => {
@@ -36,6 +61,7 @@ function useAuth() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
+    claimReferral(data.token);
     return data.user;
   };
 
@@ -51,11 +77,11 @@ function useAuth() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
     setToken(data.token);
     setUser(data.user);
+    claimReferral(data.token);
     return data.user;
   };
 
   const loginWithGoogle = useCallback(async () => {
-    // Fetch Google Client ID from our API (avoids build-time env var issues)
     let clientId;
     try {
       const configRes = await fetch('/api/config');
@@ -88,6 +114,7 @@ function useAuth() {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
                 setToken(data.token);
                 setUser(data.user);
+                claimReferral(data.token);
                 resolve(data);
               } catch (err) {
                 reject(err);
@@ -140,7 +167,37 @@ function useAuth() {
     return t ? { Authorization: `Bearer ${t}` } : {};
   }, [token]);
 
-  return { user, token, isLoading, login, register, loginWithGoogle, registerWithGoogle, logout, getAuthHeaders };
+  const updateProfile = useCallback(async (updates) => {
+    const t = token || (typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null);
+    if (!t) throw new Error('Not authenticated');
+    const res = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Update failed');
+    if (data.user) {
+      setUser(data.user);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.user));
+    }
+    return data;
+  }, [token]);
+
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    const t = token || (typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null);
+    if (!t) throw new Error('Not authenticated');
+    const res = await fetch('/api/profile/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Password change failed');
+    return data;
+  }, [token]);
+
+  return { user, token, isLoading, login, register, loginWithGoogle, registerWithGoogle, logout, getAuthHeaders, updateProfile, changePassword };
 }
 
 export { useAuth };

@@ -116,6 +116,25 @@ export default function CreatePage() {
 
       token.setSuccess(result.mintAddress, result.txSignature);
 
+      // Record token in D1 for My Tokens / social features
+      try {
+        const savedToken = typeof window !== 'undefined' ? localStorage.getItem('mememint_token') : null;
+        if (savedToken) {
+          await fetch('/api/tokens/record', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${savedToken}` },
+            body: JSON.stringify({
+              mint_address: result.mintAddress,
+              name: token.name,
+              symbol: token.symbol.toUpperCase(),
+              image: imageResult?.url || '',
+              metadata_uri: metaResult?.uri || '',
+              network,
+            }),
+          });
+        }
+      } catch { /* non-critical */ }
+
       // Store in localStorage for explore page
       try {
         const history = JSON.parse(localStorage.getItem('mememint_tokens') || '[]');

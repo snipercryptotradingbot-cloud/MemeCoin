@@ -8,6 +8,7 @@ import { shortenAddress, getExplorerUrl, formatNumber } from '@/app/lib/solana';
 import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { useAppKitConnection } from '@reown/appkit-adapter-solana/react';
 import { revokeMintAuthority, revokeFreezeAuthority, REVOKE_FEE_SOL } from '@/app/lib/revokeAuthority';
+import { useAuth } from '@/app/providers/AuthProvider';
 
 export default function TokenDetailPage({ params }) {
   const mint = typeof params?.mint === 'string' ? params.mint : decodeURIComponent((typeof window !== 'undefined' ? window.location.pathname : '') || '').split('/token/')[1] || '';
@@ -20,6 +21,11 @@ export default function TokenDetailPage({ params }) {
   const { address, isConnected } = useAppKitAccount();
   const { connection } = useAppKitConnection();
   const { walletProvider } = useAppKitProvider('solana');
+
+  const { user, token: authToken, getAuthHeaders } = useAuth();
+  const [following, setFollowing] = useState(false);
+  const [followCount, setFollowCount] = useState(0);
+  const [followLoading, setFollowLoading] = useState(false);
 
   const [revoking, setRevoking] = useState(null);
   const [revokeResult, setRevokeResult] = useState('');
@@ -43,6 +49,34 @@ export default function TokenDetailPage({ params }) {
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
   }, [mint, network]);
+
+  useEffect(() => {
+    if (!mint || !authToken) return;
+    fetch(`/api/follows/status?target_type=token&target_id=${mint}`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setFollowing(d.following); })
+      .catch(() => {});
+    fetch(`/api/tokens/${mint}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.token?.follower_count !== undefined) setFollowCount(d.token.follower_count); })
+      .catch(() => {});
+  }, [mint, authToken]);
+
+  const toggleFollow = async () => {
+    if (!authToken) { window.location.href = '/login'; return; }
+    setFollowLoading(true);
+    try {
+      const method = following ? 'DELETE' : 'POST';
+      await fetch('/api/follows', {
+        method,
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ target_type: 'token', target_id: mint, target_name: token?.name, target_image: token?.image }),
+      });
+      setFollowing(!following);
+      setFollowCount(c => c + (following ? -1 : 1));
+    } catch {}
+    setFollowLoading(false);
+  };
 
   const authorities = token?.authorities || [];
   const hasMintAuthority = authorities.some(a => a.scope === 'mint' && a.address === address);
@@ -102,7 +136,13 @@ export default function TokenDetailPage({ params }) {
                     <span className="badge badge-primary">${token.symbol}</span>
                   </div>
                 </div>
-                <NetworkBadge network={network} />
+                <div className="header-actions">
+                  <button className={`btn-follow ${following ? 'following' : ''}`} onClick={toggleFollow} disabled={followLoading}>
+                    {followLoading ? '...' : (following ? '♥ Following' : '♡ Follow')}
+                    {followCount > 0 && <span className="follow-count">{followCount}</span>}
+                  </button>
+                  <NetworkBadge network={network} />
+                </div>
               </div>
 
               {token.description && <p className="token-detail-desc">{token.description}</p>}
@@ -201,6 +241,12 @@ export default function TokenDetailPage({ params }) {
         .token-detail-card { margin-top: 24px; }
         .token-detail-header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4); flex-wrap: wrap; }
         .token-detail-title { display: flex; align-items: center; gap: var(--space-4); }
+        .header-actions { display: flex; align-items: center; gap: var(--space-3); }
+        .btn-follow { padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; cursor: pointer; border: 1px solid var(--brand-pink); background: transparent; color: var(--brand-pink); transition: all var(--transition-fast); display: flex; align-items: center; gap: var(--space-2); }
+        .btn-follow:hover { background: var(--brand-pink); color: white; }
+        .btn-follow.following { background: var(--brand-pink); color: white; }
+        .btn-follow:disabled { opacity: 0.5; cursor: not-allowed; }
+        .follow-count { font-size: 10px; background: rgba(255,255,255,0.2); padding: 1px 5px; border-radius: 999px; }
         .token-detail-image { width: 64px; height: 64px; border-radius: var(--radius-md); object-fit: cover; border: 1px solid var(--hairline); }
         .token-detail-desc { color: var(--body); margin-top: var(--space-4); line-height: 1.6; }
         .token-detail-stats { display: flex; gap: var(--space-6); margin-top: var(--space-6); flex-wrap: wrap; }

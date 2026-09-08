@@ -99,6 +99,31 @@ function generateSalt() {
   return btoa(String.fromCharCode(...bytes));
 }
 
+// ---------- Username Generation ----------
+
+function slugify(str) {
+  return (str || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 20) || 'user';
+}
+
+async function generateUniqueUsername(env, name, email) {
+  const base = slugify(name || email?.split('@')[0] || 'user');
+  const suffix = Math.random().toString(36).slice(2, 6);
+  const candidates = [
+    `${base}_${suffix}`,
+    `${base}${Math.floor(Math.random() * 900) + 100}`,
+    base,
+  ];
+  for (const candidate of candidates) {
+    const existing = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(candidate).first();
+    if (!existing) return candidate;
+  }
+  return `${base}_${Date.now()}`;
+}
+
 // ---------- API Handlers ----------
 
 async function authHandler(request, env) {
@@ -123,21 +148,26 @@ async function authHandler(request, env) {
       const salt = generateSalt();
       const passwordHash = await hashPassword(password, salt);
       const userId = `email_${normalizedEmail.replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+      const displayName = name || normalizedEmail.split('@')[0];
+      const now = new Date().toISOString();
+
+      let username = null;
+      if (env.DB) username = await generateUniqueUsername(env, displayName, normalizedEmail);
 
       if (env.DB) {
         await env.DB.prepare(
-          'INSERT INTO users (id, email, name, password_hash, provider, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).bind(userId, normalizedEmail, name || normalizedEmail.split('@')[0], `${salt}:${passwordHash}`, 'email', 'user', new Date().toISOString()).run();
+          'INSERT INTO users (id, email, name, username, password_hash, provider, role, last_login_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(userId, normalizedEmail, displayName, username, `${salt}:${passwordHash}`, 'email', 'user', now, now).run();
       }
 
       const token = await createJWT(
-        { sub: userId, email: normalizedEmail, name: name || normalizedEmail.split('@')[0], provider: 'email', role: 'user' },
+        { sub: userId, email: normalizedEmail, name: displayName, provider: 'email', role: 'user' },
         env.JWT_SECRET
       );
 
       return json({
         success: true, token,
-        user: { id: userId, email: normalizedEmail, name: name || normalizedEmail.split('@')[0], provider: 'email', role: 'user' },
+        user: { id: userId, email: normalizedEmail, name: displayName, username, provider: 'email', role: 'user' },
       });
     } catch (err) {
       console.error('Register error:', err);
@@ -156,7 +186,7 @@ async function authHandler(request, env) {
       if (!env.DB) return json({ error: 'Auth service not configured' }, 500);
 
       const user = await env.DB.prepare(
-        'SELECT id, email, name, password_hash, avatar, provider, role FROM users WHERE email = ?'
+        'SELECT id, email, name, username, password_hash, avatar, provider, role FROM users WHERE email = ?'
       ).bind(normalizedEmail).first();
 
       if (!user) return json({ error: 'No account found with this email' }, 401);
@@ -167,6 +197,11 @@ async function authHandler(request, env) {
 
       if (computedHash !== storedHash) return json({ error: 'Incorrect password' }, 401);
 
+      const now = new Date().toISOString();
+      if (env.DB) {
+        await env.DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(now, user.id).run();
+      }
+
       const token = await createJWT(
         { sub: user.id, email: user.email, name: user.name, provider: user.provider, role: user.role },
         env.JWT_SECRET
@@ -174,7 +209,7 @@ async function authHandler(request, env) {
 
       return json({
         success: true, token,
-        user: { id: user.id, email: user.email, name: user.name, avatar: user.avatar, provider: user.provider, role: user.role },
+        user: { id: user.id, email: user.email, name: user.name, username: user.username, avatar: user.avatar, provider: user.provider, role: user.role },
       });
     } catch (err) {
       console.error('Login error:', err);
@@ -219,9 +254,16 @@ async function authHandler(request, env) {
 
       // Create or update user in D1
       if (env.DB) {
-        await env.DB.prepare(
-          'INSERT OR IGNORE INTO users (id, wallet_address, role, created_at) VALUES (?, ?, ?, ?)'
-        ).bind(wallet_address, wallet_address, 'user', new Date().toISOString()).run();
+        const existing = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(wallet_address).first();
+        const now = new Date().toISOString();
+        if (existing) {
+          await env.DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(now, wallet_address).run();
+        } else {
+          const username = await generateUniqueUsername(env, wallet_address.slice(0, 8), null);
+          await env.DB.prepare(
+            'INSERT INTO users (id, wallet_address, username, provider, role, last_login_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          ).bind(wallet_address, wallet_address, username, 'wallet', 'user', now, now).run();
+        }
       }
 
       // Issue JWT
@@ -234,7 +276,7 @@ async function authHandler(request, env) {
     }
   }
 
-  // GET /api/auth/me — verify JWT and return user info
+  // GET /api/auth/me — verify JWT and return full user info
   if (request.method === 'GET' && path === '/me') {
     const payload = await verifyAuth(request, env);
     if (!payload) return json({ error: 'Unauthorized' }, 401);
@@ -242,22 +284,28 @@ async function authHandler(request, env) {
     let user = null;
     if (env.DB) {
       try {
-        const { results } = await env.DB.prepare(
-          'SELECT id, wallet_address, role, created_at FROM users WHERE id = ?'
-        ).bind(payload.sub).all();
-        user = results?.[0] || null;
+        user = await env.DB.prepare(
+          'SELECT id, email, name, username, avatar, bio, wallet_address, connected_wallet, provider, role, credits_balance, preferences, last_login_at, created_at FROM users WHERE id = ?'
+        ).bind(payload.sub).first();
       } catch {}
     }
 
-    return json({ success: true, user: user || { id: payload.sub, wallet_address: payload.wallet, role: payload.role } });
+    return json({
+      success: true,
+      user: user || {
+        id: payload.sub, email: payload.email, name: payload.name,
+        username: null, avatar: null, bio: '', wallet_address: payload.wallet,
+        connected_wallet: null, provider: payload.provider, role: payload.role,
+        credits_balance: 0, preferences: '{}', last_login_at: null, created_at: null,
+      },
+    });
   }
 
-  // POST /api/auth/google — Google OAuth (hook for later)
+  // POST /api/auth/google — Google OAuth
   if (request.method === 'POST' && path === '/google') {
     const { google_token } = await request.json();
     if (!google_token) return json({ error: 'google_token required' }, 400);
 
-    // Verify Google token with Google's API
     const googleResp = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${google_token}`);
     if (!googleResp.ok) return json({ error: 'Invalid Google token' }, 401);
 
@@ -265,11 +313,21 @@ async function authHandler(request, env) {
     const email = googleData.email;
     const name = googleData.name || email.split('@')[0];
     const userId = `google_${email}`;
+    const now = new Date().toISOString();
 
     if (env.DB) {
-      await env.DB.prepare(
-        'INSERT OR IGNORE INTO users (id, wallet_address, role, created_at) VALUES (?, ?, ?, ?)'
-      ).bind(userId, email, 'user', new Date().toISOString()).run();
+      const existing = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
+      if (existing) {
+        const username = existing.username || await generateUniqueUsername(env, name, email);
+        await env.DB.prepare(
+          'UPDATE users SET email = ?, name = ?, username = COALESCE(username, ?), last_login_at = ? WHERE id = ?'
+        ).bind(email, name, username, now, userId).run();
+      } else {
+        const username = await generateUniqueUsername(env, name, email);
+        await env.DB.prepare(
+          'INSERT INTO users (id, email, name, username, provider, role, last_login_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(userId, email, name, username, 'google', email.toLowerCase().includes('admin') ? 'admin' : 'user', now, now).run();
+      }
     }
 
     const token = await createJWT(
@@ -960,6 +1018,583 @@ export class ChatRoom {
   }
 }
 
+// ---------- Profile Handler ----------
+
+async function profileHandler(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  // GET /api/profile — full profile
+  if (request.method === 'GET' && (path === '/api/profile' || path === '/api/profile/')) {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    let user = null;
+    if (env.DB) {
+      try {
+        user = await env.DB.prepare(
+          'SELECT id, email, name, username, avatar, bio, wallet_address, connected_wallet, provider, role, credits_balance, preferences, last_login_at, created_at FROM users WHERE id = ?'
+        ).bind(payload.sub).first();
+      } catch {}
+    }
+
+    if (!user) return json({ error: 'User not found' }, 404);
+
+    let tokenCount = 0;
+    let liquidityCount = 0;
+    let activityCount = 0;
+    if (env.DB) {
+      try {
+        const tc = await env.DB.prepare('SELECT COUNT(*) as c FROM tokens WHERE creator_id = ?').bind(user.id).first();
+        tokenCount = tc?.c || 0;
+        const lc = await env.DB.prepare(
+          'SELECT COUNT(*) as c FROM liquidity_pools lp JOIN tokens t ON lp.token_id = t.id WHERE t.creator_id = ?'
+        ).bind(user.id).first();
+        liquidityCount = lc?.c || 0;
+        const ac = await env.DB.prepare('SELECT COUNT(*) as c FROM user_activities WHERE user_id = ?').bind(user.id).first();
+        activityCount = ac?.c || 0;
+      } catch {}
+    }
+
+    return json({ success: true, user: { ...user, stats: { tokenCount, liquidityCount, activityCount } } });
+  }
+
+  // PATCH /api/profile — update profile
+  if (request.method === 'PATCH' && (path === '/api/profile' || path === '/api/profile/')) {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const body = await request.json();
+    const { name, bio, preferences } = body;
+    const updates = [];
+    const params = [];
+
+    if (name !== undefined) { updates.push('name = ?'); params.push(name); }
+    if (bio !== undefined) { updates.push('bio = ?'); params.push(bio); }
+    if (preferences !== undefined) { updates.push('preferences = ?'); params.push(typeof preferences === 'string' ? preferences : JSON.stringify(preferences)); }
+
+    if (updates.length === 0) return json({ error: 'No fields to update' }, 400);
+
+    updates.push('updated_at = ?');
+    params.push(new Date().toISOString());
+    params.push(payload.sub);
+
+    if (env.DB) {
+      await env.DB.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run();
+    }
+
+    const user = await env.DB.prepare(
+      'SELECT id, email, name, username, avatar, bio, wallet_address, connected_wallet, provider, role, credits_balance, preferences, last_login_at, created_at FROM users WHERE id = ?'
+    ).bind(payload.sub).first();
+
+    return json({ success: true, user });
+  }
+
+  // POST /api/profile/change-password
+  if (request.method === 'POST' && path === '/api/profile/change-password') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const { currentPassword, newPassword } = await request.json();
+    if (!currentPassword || !newPassword) return json({ error: 'currentPassword and newPassword required' }, 400);
+    if (newPassword.length < 8) return json({ error: 'New password must be at least 8 characters' }, 400);
+
+    if (!env.DB) return json({ error: 'Auth service not configured' }, 500);
+
+    const user = await env.DB.prepare('SELECT id, password_hash, provider FROM users WHERE id = ?').bind(payload.sub).first();
+    if (!user) return json({ error: 'User not found' }, 404);
+    if (user.provider !== 'email') return json({ error: 'Password change is only available for email accounts' }, 400);
+    if (!user.password_hash) return json({ error: 'No password set' }, 400);
+
+    const [salt, storedHash] = user.password_hash.split(':');
+    const computedHash = await hashPassword(currentPassword, salt);
+    if (computedHash !== storedHash) return json({ error: 'Incorrect current password' }, 401);
+
+    const newSalt = generateSalt();
+    const newHash = await hashPassword(newPassword, newSalt);
+    await env.DB.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?')
+      .bind(`${newSalt}:${newHash}`, new Date().toISOString(), payload.sub).run();
+
+    return json({ success: true, message: 'Password updated' });
+  }
+
+  // POST /api/profile/connect-wallet
+  if (request.method === 'POST' && path === '/api/profile/connect-wallet') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const { wallet_address } = await request.json();
+    if (!wallet_address) return json({ error: 'wallet_address required' }, 400);
+
+    if (env.DB) {
+      await env.DB.prepare('UPDATE users SET connected_wallet = ?, wallet_address = COALESCE(wallet_address, ?), updated_at = ? WHERE id = ?')
+        .bind(wallet_address, wallet_address, new Date().toISOString(), payload.sub).run();
+    }
+
+    return json({ success: true, connected_wallet: wallet_address });
+  }
+
+  return null;
+}
+
+// ---------- Follows Handler ----------
+
+async function followsHandler(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  // POST /api/follows — follow a user or token
+  if (request.method === 'POST' && (path === '/api/follows' || path === '/api/follows/')) {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const { target_type, target_id, target_name, target_image } = await request.json();
+    if (!target_type || !target_id) return json({ error: 'target_type and target_id required' }, 400);
+    if (!['user', 'token'].includes(target_type)) return json({ error: 'target_type must be user or token' }, 400);
+    if (target_id === payload.sub) return json({ error: 'Cannot follow yourself' }, 400);
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    if (env.DB) {
+      try {
+        await env.DB.prepare(
+          'INSERT OR IGNORE INTO follows (id, follower_id, target_type, target_id, target_name, target_image, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(id, payload.sub, target_type, target_id, target_name || '', target_image || '', now).run();
+
+        // Notification to target (if user)
+        if (target_type === 'user') {
+          const actor = await env.DB.prepare('SELECT username, name FROM users WHERE id = ?').bind(payload.sub).first();
+          await env.DB.prepare(
+            'INSERT INTO notifications (id, user_id, type, actor_id, title, body, link, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+          ).bind(crypto.randomUUID(), target_id, 'new_follower', payload.sub, 'New follower', `${actor?.name || 'Someone'} followed you`, `/u/${actor?.username || payload.sub}`, now).run();
+        }
+
+        // Notification to token creator (if token)
+        if (target_type === 'token') {
+          const token = await env.DB.prepare('SELECT creator_id, name FROM tokens WHERE mint_address = ?').bind(target_id).first();
+          if (token?.creator_id && token.creator_id !== payload.sub) {
+            const actor = await env.DB.prepare('SELECT username, name FROM users WHERE id = ?').bind(payload.sub).first();
+            await env.DB.prepare(
+              'INSERT INTO notifications (id, user_id, type, actor_id, title, body, link, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            ).bind(crypto.randomUUID(), token.creator_id, 'token_followed', payload.sub, 'Token followed', `${actor?.name || 'Someone'} followed ${token.name || 'your token'}`, `/token/${target_id}`, now).run();
+          }
+        }
+      } catch (e) {
+        return json({ error: 'Failed to follow' }, 500);
+      }
+    }
+
+    return json({ success: true, following: true });
+  }
+
+  // DELETE /api/follows — unfollow
+  if (request.method === 'DELETE' && (path === '/api/follows' || path === '/api/follows/')) {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const { target_type, target_id } = await request.json();
+    if (!target_type || !target_id) return json({ error: 'target_type and target_id required' }, 400);
+
+    if (env.DB) {
+      await env.DB.prepare('DELETE FROM follows WHERE follower_id = ? AND target_type = ? AND target_id = ?')
+        .bind(payload.sub, target_type, target_id).run();
+    }
+
+    return json({ success: true, following: false });
+  }
+
+  // GET /api/follows — list my follows
+  if (request.method === 'GET' && (path === '/api/follows' || path === '/api/follows/')) {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const type = url.searchParams.get('type'); // 'user' | 'token' | null
+    let query = 'SELECT * FROM follows WHERE follower_id = ?';
+    const params = [payload.sub];
+    if (type) { query += ' AND target_type = ?'; params.push(type); }
+    query += ' ORDER BY created_at DESC LIMIT 100';
+
+    const { results } = await env.DB.prepare(query).bind(...params).all();
+    return json({ success: true, follows: results || [] });
+  }
+
+  // GET /api/follows/status — check if I follow a target
+  if (request.method === 'GET' && path === '/api/follows/status') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const target_type = url.searchParams.get('target_type');
+    const target_id = url.searchParams.get('target_id');
+    if (!target_type || !target_id) return json({ error: 'target_type and target_id required' }, 400);
+
+    const existing = await env.DB.prepare('SELECT id FROM follows WHERE follower_id = ? AND target_type = ? AND target_id = ?')
+      .bind(payload.sub, target_type, target_id).first();
+
+    return json({ success: true, following: !!existing });
+  }
+
+  return null;
+}
+
+// ---------- Feed Handler ----------
+
+async function feedHandler(request, env) {
+  if (request.method !== 'GET') return json({ error: 'Method Not Allowed' }, 405);
+  const url = new URL(request.url);
+  const scope = url.searchParams.get('scope') || 'home';
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '30'), 50);
+
+  if (!env.DB) return json({ success: true, items: [] });
+
+  try {
+    let items = [];
+
+    if (scope === 'home') {
+      const { results } = await env.DB.prepare(
+        `SELECT ua.id, ua.user_id, ua.action, ua.target, ua.metadata, ua.created_at,
+                u.username, u.name as user_name
+         FROM user_activities ua
+         LEFT JOIN users u ON ua.user_id = u.id
+         ORDER BY ua.created_at DESC LIMIT ?`
+      ).bind(limit).all();
+      items = (results || []).map(r => ({
+        id: r.id, type: r.action, target: r.target,
+        user: { id: r.user_id, username: r.username, name: r.user_name },
+        metadata: r.metadata ? JSON.parse(r.metadata) : {},
+        created_at: r.created_at,
+      }));
+    } else if (scope === 'user') {
+      const userId = url.searchParams.get('user_id');
+      if (!userId) return json({ error: 'user_id required' }, 400);
+      const { results } = await env.DB.prepare(
+        `SELECT ua.id, ua.action, ua.target, ua.metadata, ua.created_at,
+                u.username, u.name as user_name
+         FROM user_activities ua
+         LEFT JOIN users u ON ua.user_id = u.id
+         WHERE ua.user_id = ?
+         ORDER BY ua.created_at DESC LIMIT ?`
+      ).bind(userId, limit).all();
+      items = (results || []).map(r => ({
+        id: r.id, type: r.action, target: r.target,
+        user: { id: userId, username: r.username, name: r.user_name },
+        metadata: r.metadata ? JSON.parse(r.metadata) : {},
+        created_at: r.created_at,
+      }));
+    } else if (scope === 'token') {
+      const tokenId = url.searchParams.get('token_id');
+      if (!tokenId) return json({ error: 'token_id required' }, 400);
+      const { results } = await env.DB.prepare(
+        `SELECT ae.id, ae.event_type, ae.user_id, ae.metadata, ae.created_at,
+                u.username, u.name as user_name
+         FROM analytics_events ae
+         LEFT JOIN users u ON ae.user_id = u.id
+         WHERE ae.token_id = ?
+         ORDER BY ae.created_at DESC LIMIT ?`
+      ).bind(tokenId, limit).all();
+      items = (results || []).map(r => ({
+        id: r.id, type: r.event_type, target: tokenId,
+        user: { id: r.user_id, username: r.username, name: r.user_name },
+        metadata: r.metadata ? JSON.parse(r.metadata) : {},
+        created_at: r.created_at,
+      }));
+    }
+
+    return json({ success: true, items });
+  } catch {
+    return json({ success: true, items: [] });
+  }
+}
+
+// ---------- Users Handler ----------
+
+async function usersHandler(request, env) {
+  if (request.method !== 'GET') return json({ error: 'Method Not Allowed' }, 405);
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const usernameMatch = path.match(/^\/api\/users\/([^/]+)$/);
+  if (!usernameMatch) return json({ error: 'Not Found' }, 404);
+
+  const handle = usernameMatch[1];
+  if (!env.DB) return json({ error: 'DB not configured' }, 500);
+
+  try {
+    const user = await env.DB.prepare(
+      'SELECT id, username, name, bio, avatar, provider, created_at FROM users WHERE username = ?'
+    ).bind(handle).first();
+
+    if (!user) return json({ error: 'User not found' }, 404);
+
+    const followerCount = await env.DB.prepare('SELECT COUNT(*) as c FROM follows WHERE target_type = ? AND target_id = ?').bind('user', user.id).first();
+    const followingCount = await env.DB.prepare('SELECT COUNT(*) as c FROM follows WHERE follower_id = ?').bind(user.id).first();
+    const tokenCount = await env.DB.prepare('SELECT COUNT(*) as c FROM tokens WHERE creator_id = ?').bind(user.id).first();
+
+    const { results: tokens } = await env.DB.prepare(
+      'SELECT mint_address, name, symbol, image, network, created_at FROM tokens WHERE creator_id = ? ORDER BY created_at DESC LIMIT 10'
+    ).bind(user.id).all();
+
+    const { results: activity } = await env.DB.prepare(
+      'SELECT id, action, target, metadata, created_at FROM user_activities WHERE user_id = ? ORDER BY created_at DESC LIMIT 20'
+    ).bind(user.id).all();
+
+    return json({
+      success: true,
+      user: {
+        ...user,
+        follower_count: followerCount?.c || 0,
+        following_count: followingCount?.c || 0,
+        token_count: tokenCount?.c || 0,
+        tokens: tokens || [],
+        activity: (activity || []).map(a => ({ ...a, metadata: a.metadata ? JSON.parse(a.metadata) : {} })),
+      },
+    });
+  } catch {
+    return json({ error: 'User not found' }, 404);
+  }
+}
+
+// ---------- Notifications Handler ----------
+
+async function notificationsHandler(request, env) {
+  if (request.method !== 'GET' && request.method !== 'POST') return json({ error: 'Method Not Allowed' }, 405);
+  const url = new URL(request.url);
+
+  // GET /api/notifications — list notifications (unread first)
+  if (request.method === 'GET') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '30'), 100);
+    const unreadOnly = url.searchParams.get('unread') === '1';
+
+    let query = 'SELECT * FROM notifications WHERE user_id = ?';
+    const params = [payload.sub];
+    if (unreadOnly) { query += ' AND is_read = 0'; }
+    query += ' ORDER BY is_read ASC, created_at DESC LIMIT ?';
+    params.push(limit);
+
+    const { results } = await env.DB.prepare(query).bind(...params).all();
+    const unread = await env.DB.prepare('SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND is_read = 0').bind(payload.sub).first();
+
+    return json({ success: true, notifications: results || [], unread_count: unread?.c || 0 });
+  }
+
+  // POST /api/notifications/read — mark read
+  if (request.method === 'POST') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const body = await request.json();
+    const { notification_ids, mark_all } = body;
+
+    if (mark_all) {
+      await env.DB.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0').bind(payload.sub).run();
+    } else if (notification_ids?.length) {
+      const stmt = env.DB.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?');
+      const batch = notification_ids.map(id => stmt.bind(id, payload.sub));
+      await env.DB.batch(batch);
+    }
+
+    return json({ success: true });
+  }
+
+  return null;
+}
+
+// ---------- Tokens Handler ----------
+
+async function tokensHandler(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  // POST /api/tokens/record — record a newly created token
+  if (request.method === 'POST' && path === '/api/tokens/record') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const body = await request.json();
+    const { mint_address, name, symbol, image, metadata_uri, network } = body;
+    if (!mint_address || !name || !symbol) return json({ error: 'mint_address, name, symbol required' }, 400);
+
+    const id = mint_address;
+    const now = new Date().toISOString();
+
+    if (env.DB) {
+      try {
+        await env.DB.prepare(
+          'INSERT OR REPLACE INTO tokens (id, mint_address, name, symbol, creator_id, image, metadata_uri, network, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(id, mint_address, name, symbol.toUpperCase(), payload.sub, image || '', metadata_uri || '', network || 'devnet', now).run();
+      } catch (e) {
+        return json({ error: 'Failed to record token' }, 500);
+      }
+    }
+
+    return json({ success: true, token: { id, mint_address, name, symbol: symbol.toUpperCase(), creator_id: payload.sub, created_at: now } });
+  }
+
+  // GET /api/tokens/mine — list tokens created by authed user
+  if (request.method === 'GET' && path === '/api/tokens/mine') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    let tokens = [];
+    if (env.DB) {
+      try {
+        const { results } = await env.DB.prepare(
+          'SELECT t.id, t.mint_address, t.name, t.symbol, t.image, t.network, t.created_at, lp.pool_address, lp.bonding_curve_progress, lp.is_migrated, lp.sol_accumulated, lp.sol_target FROM tokens t LEFT JOIN liquidity_pools lp ON lp.token_id = t.id WHERE t.creator_id = ? ORDER BY t.created_at DESC'
+        ).bind(payload.sub).all();
+        tokens = results || [];
+      } catch {}
+    }
+
+    return json({ success: true, tokens });
+  }
+
+  // GET /api/tokens/:mint — public token info
+  const mintMatch = path.match(/^\/api\/tokens\/([A-Za-z0-9]+)$/);
+  if (request.method === 'GET' && mintMatch) {
+    const mint = mintMatch[1];
+    if (!env.DB) return json({ error: 'DB not configured' }, 500);
+
+    try {
+      const token = await env.DB.prepare(
+        'SELECT t.*, u.username as creator_username, u.name as creator_name, lp.pool_address, lp.bonding_curve_progress, lp.is_migrated, lp.sol_accumulated, lp.sol_target, lp.amm FROM tokens t LEFT JOIN users u ON t.creator_id = u.id LEFT JOIN liquidity_pools lp ON lp.token_id = t.id WHERE t.mint_address = ?'
+      ).bind(mint).first();
+
+      if (!token) return json({ error: 'Token not found' }, 404);
+
+      const followCount = await env.DB.prepare('SELECT COUNT(*) as c FROM follows WHERE target_type = ? AND target_id = ?').bind('token', mint).first();
+
+      return json({ success: true, token: { ...token, follower_count: followCount?.c || 0 } });
+    } catch {
+      return json({ error: 'Token not found' }, 404);
+    }
+  }
+
+  return null;
+}
+
+// ---------- Referrals Handler (Promote & Earn) ----------
+
+const PROMOTER_CUT_PERCENT = 30; // promoter earns 30% of platform's 1% curve fee
+
+async function referralsHandler(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  // POST /api/referrals/claim — visitor attributed to promoter on sign-in
+  if (request.method === 'POST' && path === '/api/referrals/claim') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const { promoter_username, token_mint } = await request.json();
+    if (!promoter_username) return json({ error: 'promoter_username required' }, 400);
+
+    const promoter = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(promoter_username).first();
+    if (!promoter) return json({ error: 'Promoter not found' }, 404);
+    if (promoter.id === payload.sub) return json({ error: 'Cannot refer yourself' }, 400);
+
+    const existing = await env.DB.prepare('SELECT id FROM referrals WHERE promoter_id = ? AND referred_id = ?')
+      .bind(promoter.id, payload.sub).first();
+    if (existing) return json({ success: true, already_claimed: true });
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      'INSERT INTO referrals (id, promoter_id, referred_id, token_mint, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).bind(id, promoter.id, payload.sub, token_mint || '', new Date().toISOString()).run();
+
+    return json({ success: true });
+  }
+
+  // POST /api/referrals/trade — record a referred trade and credit promoter
+  if (request.method === 'POST' && path === '/api/referrals/trade') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const { token_mint, sol_amount, tx_signature } = await request.json();
+    if (!token_mint || !sol_amount) return json({ error: 'token_mint and sol_amount required' }, 400);
+
+    const referral = await env.DB.prepare('SELECT id, promoter_id FROM referrals WHERE referred_id = ? AND (token_mint = ? OR token_mint = ?) ORDER BY created_at DESC LIMIT 1')
+      .bind(payload.sub, token_mint, '').first();
+
+    if (!referral) return json({ success: true, no_referral: true });
+
+    const platformFee = parseFloat(sol_amount) * 0.01;
+    const promoterCutLamports = Math.floor(platformFee * 1e9 * PROMOTER_CUT_PERCENT / 100);
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      'INSERT INTO referrals (id, promoter_id, referred_id, token_mint, buyer_id, sol_amount, platform_fee, promoter_cut, tx_signature, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(id, referral.promoter_id, payload.sub, token_mint, payload.sub, parseFloat(sol_amount), platformFee, promoterCutLamports / 1e9, tx_signature || '', new Date().toISOString()).run();
+
+    await env.DB.prepare('UPDATE users SET credits_balance = credits_balance + ? WHERE id = ?')
+      .bind(promoterCutLamports, referral.promoter_id).run();
+
+    const promoter = await env.DB.prepare('SELECT username, name FROM users WHERE id = ?').bind(referral.promoter_id).first();
+    const actor = await env.DB.prepare('SELECT username, name FROM users WHERE id = ?').bind(payload.sub).first();
+    await env.DB.prepare(
+      'INSERT INTO notifications (id, user_id, type, actor_id, title, body, link, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), referral.promoter_id, 'commission_earned', payload.sub, 'Commission earned', `${actor?.name || 'Someone'} bought ${(parseFloat(sol_amount)).toFixed(4)} SOL of ${token_mint.slice(0, 8)}... — you earned ${(promoterCutLamports / 1e9).toFixed(6)} SOL in credits`, `/settings`, new Date().toISOString()).run();
+
+    return json({ success: true, credited: promoterCutLamports / 1e9 });
+  }
+
+  // GET /api/referrals — my referrals + earnings
+  if (request.method === 'GET' && (path === '/api/referrals' || path === '/api/referrals/')) {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const referrals = await env.DB.prepare(
+      'SELECT r.*, u.username as referred_username, u.name as referred_name FROM referrals r LEFT JOIN users u ON r.referred_id = u.id WHERE r.promoter_id = ? ORDER BY r.created_at DESC LIMIT 50'
+    ).bind(payload.sub).all();
+
+    const totalEarnings = await env.DB.prepare('SELECT COALESCE(SUM(promoter_cut), 0) as total FROM referrals WHERE promoter_id = ?').bind(payload.sub).first();
+    const user = await env.DB.prepare('SELECT credits_balance FROM users WHERE id = ?').bind(payload.sub).first();
+
+    return json({
+      success: true,
+      referrals: referrals.results || [],
+      total_earnings: totalEarnings?.total || 0,
+      credits_balance: user?.credits_balance || 0,
+      promoter_cut_percent: PROMOTER_CUT_PERCENT,
+    });
+  }
+
+  // POST /api/payouts/fee-credit — use credits toward creation fee (0.1 SOL)
+  if (request.method === 'POST' && path === '/api/payouts/fee-credit') {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const CREATE_FEE_LAMPORTS = 100_000_000; // 0.1 SOL
+    const user = await env.DB.prepare('SELECT credits_balance FROM users WHERE id = ?').bind(payload.sub).first();
+    if (!user || user.credits_balance < CREATE_FEE_LAMPORTS) {
+      return json({ error: 'Insufficient credits. Need at least 0.1 SOL in credits.' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    await env.DB.prepare('INSERT INTO payout_requests (id, user_id, amount_lamports, status, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, payload.sub, CREATE_FEE_LAMPORTS, 'processed', new Date().toISOString()).run();
+
+    await env.DB.prepare('UPDATE users SET credits_balance = credits_balance - ? WHERE id = ?')
+      .bind(CREATE_FEE_LAMPORTS, payload.sub).run();
+
+    return json({ success: true, fee_applied: true, remaining_credits: user.credits_balance - CREATE_FEE_LAMPORTS });
+  }
+
+  // GET /api/payouts — earnings ledger
+  if (request.method === 'GET' && (path === '/api/payouts' || path === '/api/payouts/')) {
+    const payload = await verifyAuth(request, env);
+    if (!payload) return json({ error: 'Unauthorized' }, 401);
+
+    const payouts = await env.DB.prepare('SELECT * FROM payout_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').bind(payload.sub).all();
+    const user = await env.DB.prepare('SELECT credits_balance FROM users WHERE id = ?').bind(payload.sub).first();
+
+    return json({ success: true, payouts: payouts.results || [], credits_balance: user?.credits_balance || 0 });
+  }
+
+  return null;
+}
+
 // ---------- Config Endpoint ----------
 
 async function configHandler(request, env) {
@@ -980,6 +1615,14 @@ async function apiRouter(request, env) {
   try {
     if (path === '/api/config' || path === '/api/config/') return configHandler(request, env);
     if (path.startsWith('/api/auth')) return authHandler(request, env);
+    if (path.startsWith('/api/profile')) return profileHandler(request, env);
+    if (path.startsWith('/api/follows')) return followsHandler(request, env);
+    if (path.startsWith('/api/feed')) return feedHandler(request, env);
+    if (path.startsWith('/api/notifications')) return notificationsHandler(request, env);
+    if (path.startsWith('/api/referrals')) return referralsHandler(request, env);
+    if (path.startsWith('/api/payouts')) return referralsHandler(request, env);
+    if (path.match(/^\/api\/users\//)) return usersHandler(request, env);
+    if (path.startsWith('/api/tokens')) return tokensHandler(request, env);
     if (path.startsWith('/api/chat')) return chatHandler(request, env);
     if (path.startsWith('/api/admin')) return adminHandler(request, env);
     if (path.startsWith('/api/analytics')) return analyticsHandler(request, env);

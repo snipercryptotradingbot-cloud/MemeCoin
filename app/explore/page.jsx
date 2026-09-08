@@ -92,6 +92,14 @@ function ExploreContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
+  const refParam = searchParams.get('ref');
+
+  useEffect(() => {
+    if (refParam) {
+      try { localStorage.setItem('mememint_ref', refParam); } catch {}
+    }
+  }, [refParam]);
+  
   const [mintInput, setMintInput] = useState(searchParams.get('mint') || '');
   const [network, setNetwork] = useState(searchParams.get('network') || 'devnet');
   const [tokenInfo, setTokenInfo] = useState(null);
