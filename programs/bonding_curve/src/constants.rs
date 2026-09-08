@@ -4,7 +4,6 @@ use anchor_lang::prelude::*;
 pub const CURVE_SEED: &[u8] = b"bonding_curve";
 pub const SOL_VAULT_SEED: &[u8] = b"sol_vault";
 pub const TOKEN_VAULT_SEED: &[u8] = b"token_vault";
-pub const USER_POSITION_SEED: &[u8] = b"user_position";
 
 /// Default fee: 1% (100 basis points)
 pub const DEFAULT_FEE_BASIS_POINTS: u16 = 100;

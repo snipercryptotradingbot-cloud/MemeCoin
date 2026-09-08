@@ -45,12 +45,10 @@ import {
   buildInitializeCurveTx,
   buildBuyTokensTx,
   buildSellTokensTx,
-  buildAddLiquidityTx,
-  buildRemoveLiquidityTx,
   buildMigrateToDexTx,
   buildCloseCurveTx,
 } from '../app/lib/bondingCurve.js';
-import { getBondingCurveState, getUserPosition } from '../app/lib/poolState.js';
+import { getBondingCurveState } from '../app/lib/poolState.js';
 
 // ---------- config ----------
 const args = process.argv.slice(2);
@@ -352,54 +350,7 @@ async function main() {
   check('trader received SOL from sell', solAfterSell > solBeforeSell + 500,
     `delta=${sol(solAfterSell - solBeforeSell)}`);
 
-  console.log('\n[5] trader add_liquidity (proves LP relaxed beyond creator)');
-  const solBeforeAdd = await connection.getBalance(trader.publicKey);
-  let posBefore = await getUserPosition(connection, curve.curveAddress, trader.publicKey.toBase58());
-  const lpBeforeAdd = posBefore ? posBefore.lpTokens : 0;
-  if (MODE === 'api') {
-    await apiAction(trader, {
-      action: 'add_liquidity', wallet: trader.publicKey.toBase58(), mint_address: mint.toBase58(),
-      sol_amount: 0.1, token_amount: 300_000_000, network: NETWORK,
-    });
-    await apiPositions({ wallet: trader.publicKey.toBase58(), pool_id: poolId, action: 'add_liquidity', sol_amount: 0.1, token_amount: 300_000_000 });
-  } else {
-    const { transaction } = await buildAddLiquidityTx(
-      connection, trader.publicKey.toBase58(), mint.toBase58(), 0.1, 300_000_000
-    );
-    await signAndSend(transaction, trader);
-  }
-  curve = await getBondingCurveState(connection, mint.toBase58());
-  posBefore = await getUserPosition(connection, curve.curveAddress, trader.publicKey.toBase58());
-  check('curve LP supply increased', curve.totalLpSupply > lpBeforeAdd && curve.totalLpSupply > 0,
-    `totalLpSupply=${curve.totalLpSupply}`);
-  check('trader position created with LP>0', posBefore && posBefore.lpTokens > 0,
-    posBefore ? `lp=${posBefore.lpTokens}` : 'no position');
-  check('trader SOL decreased (deposit)', solBeforeAdd > (await connection.getBalance(trader.publicKey)));
-  const totalLpAfterAdd = curve.totalLpSupply;
-
-  console.log('\n[6] trader remove_liquidity (50% of LP)');
-  const solBeforeRemove = await connection.getBalance(trader.publicKey);
-  const lpToRemove = Math.floor(posBefore.lpTokens / 2);
-  if (MODE === 'api') {
-    await apiAction(trader, {
-      action: 'remove_liquidity', wallet: trader.publicKey.toBase58(), mint_address: mint.toBase58(),
-      lp_tokens: lpToRemove, network: NETWORK,
-    });
-  } else {
-    const { transaction } = await buildRemoveLiquidityTx(
-      connection, trader.publicKey.toBase58(), mint.toBase58(), lpToRemove
-    );
-    await signAndSend(transaction, trader);
-  }
-  curve = await getBondingCurveState(connection, mint.toBase58());
-  const posAfter = await getUserPosition(connection, curve.curveAddress, trader.publicKey.toBase58());
-  check('trader LP reduced', posAfter && posAfter.lpTokens < posBefore.lpTokens,
-    posAfter ? `lp=${posAfter.lpTokens}` : 'position gone?');
-  check('trader received SOL back', (await connection.getBalance(trader.publicKey)) > solBeforeRemove + 100_000);
-  check('curve totals reduced after remove', curve.totalLpSupply < totalLpAfterAdd,
-    `totalLpSupply=${curve.totalLpSupply} (was ${totalLpAfterAdd})`);
-
-  console.log('\n[7] creator migrate_to_dex (graduation payout)');
+  console.log('\n[5] creator migrate_to_dex (graduation payout)');
   const solBeforeMigrate = await connection.getBalance(creator.publicKey);
   const tokenBalBeforeMigrate = (await tokenBalance(creatorAta)).uiAmount;
   if (MODE === 'api') {
@@ -417,14 +368,13 @@ async function main() {
   check('curve status Migrated (3)', curve.status === 3, `status=${curve.status}`);
   check('curve reserves zeroed', curve.solReserves === 0 && curve.tokenReserves === 0,
     `sol=${curve.solReserves} tok=${curve.tokenReserves}`);
-  check('curve LP supply burned', curve.totalLpSupply === 0, `totalLpSupply=${curve.totalLpSupply}`);
   const solAfterMigrate = await connection.getBalance(creator.publicKey);
   const tokenBalAfterMigrate = (await tokenBalance(creatorAta)).uiAmount;
   check('creator received SOL payout', solAfterMigrate > solBeforeMigrate + 0.3 * LAMPORTS_PER_SOL,
     `delta=${sol(solAfterMigrate - solBeforeMigrate)}`);
   check('creator received token payout', tokenBalAfterMigrate > tokenBalBeforeMigrate);
 
-  console.log('\n[8] creator close_curve (allow Migrated status)');
+  console.log('\n[6] creator close_curve (allow Migrated status)');
   if (MODE === 'api') {
     await apiAction(creator, {
       action: 'close', wallet: creator.publicKey.toBase58(), mint_address: mint.toBase58(), network: NETWORK,
@@ -436,7 +386,7 @@ async function main() {
   curve = await getBondingCurveState(connection, mint.toBase58());
   check('curve status Closed (2)', curve.status === 2, `status=${curve.status}`);
 
-  console.log('\n[9] worker API assertions');
+  console.log('\n[7] worker API assertions');
   if (MODE === 'api') {
     const poolsRes = await fetch(`${WORKER_BASE}/api/liquidity?action=pools&network=${NETWORK}`);
     const pools = await poolsRes.json();
@@ -456,8 +406,8 @@ async function main() {
       `${WORKER_BASE}/api/liquidity/positions?wallet=${trader.publicKey.toBase58()}&network=${NETWORK}`
     );
     const pos = await posRes.json();
-    check('trader D1 positions include add_liquidity',
-      (pos.positions || []).some((p) => p.action === 'add_liquidity'));
+    check('trader D1 positions include buy',
+      (pos.positions || []).some((p) => p.action === 'buy'));
   }
 
   console.log(`\nRESULT: ${failed === 0 ? 'PASSED' : 'FAILED'} (${passed} passed, ${failed} failed)`);

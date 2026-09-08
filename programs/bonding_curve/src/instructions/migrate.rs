@@ -71,7 +71,6 @@ pub fn handler(ctx: Context<MigrateToDex>) -> Result<()> {
 
     let mint_key = ctx.accounts.curve.mint;
     let curve_bump = ctx.accounts.curve.curve_bump;
-    let sol_vault_bump = ctx.accounts.curve.sol_vault_bump;
     let signer_seeds: &[&[&[u8]]] = &[&[
         CURVE_SEED,
         mint_key.as_ref(),
@@ -102,16 +101,15 @@ pub fn handler(ctx: Context<MigrateToDex>) -> Result<()> {
         )?;
     }
 
-    // Burn all LP and zero reserves: the curve has formally graduated
+    // Mark curve as graduated
     let curve = &mut ctx.accounts.curve;
     curve.sol_reserves = 0;
     curve.token_reserves = 0;
-    curve.total_lp_supply = 0;
     curve.total_swaps = curve.total_swaps.checked_add(1).ok_or(BondingCurveError::MathOverflow)?;
     curve.status = CurveStatus::Migrated;
 
     msg!(
-        "Migrate to DEX: {} SOL, {} tokens paid to creator {}",
+        "Migrate to DEX: {} SOL, {} tokens paid to creator {}. Frontend should create DLMM pool.",
         sol_out,
         tokens_out,
         ctx.accounts.creator.key()

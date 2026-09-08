@@ -12,8 +12,6 @@ pub struct BondingCurve {
     pub curve_bump: u8,            // 1
     /// Bump seed for SOL vault PDA
     pub sol_vault_bump: u8,        // 1
-    /// Bump seed for token vault (ATA)
-    pub token_vault_bump: u8,      // 1
     /// Current status: Active=0, Paused=1, Closed=2, Migrated=3
     pub status: CurveStatus,       // 1
     /// SOL reserves in lamports
@@ -30,8 +28,8 @@ pub struct BondingCurve {
     pub total_swaps: u64,          // 8
     /// Timestamp of creation
     pub created_at: i64,           // 8
-    /// Total LP tokens supply (virtual, for share calculation)
-    pub total_lp_supply: u64,      // 8
+    /// DLMM pool address (set on migration)
+    pub dlmm_pool: Pubkey,         // 32
     /// Reserved for future use
     pub padding: [u8; 32],         // 32
 }
@@ -43,25 +41,4 @@ pub enum CurveStatus {
     Paused,
     Closed,
     Migrated,
-}
-
-/// UserPosition tracks a user's share in a specific bonding curve.
-/// One position per user per curve.
-#[account]
-#[derive(InitSpace)]
-pub struct UserPosition {
-    /// The user's wallet
-    pub user: Pubkey,              // 32
-    /// The curve this position belongs to
-    pub curve: Pubkey,             // 32
-    /// Bump seed
-    pub bump: u8,                  // 1
-    /// Total SOL deposited via add_liquidity
-    pub sol_deposited: u64,        // 8
-    /// Total tokens deposited via add_liquidity
-    pub tokens_deposited: u64,     // 8
-    /// LP tokens accumulated (share of pool)
-    pub lp_tokens: u64,            // 8
-    /// Reserved
-    pub padding: [u8; 16],         // 16
 }

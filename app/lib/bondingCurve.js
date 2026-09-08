@@ -2,7 +2,6 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
-  LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import {
   TOKEN_2022_PROGRAM_ID,
@@ -12,20 +11,17 @@ import {
   BONDING_CURVE_PROGRAM_ID,
   CURVE_SEED,
   SOL_VAULT_SEED,
-  USER_POSITION_SEED,
   DEFAULT_FEE_BASIS_POINTS,
   DEFAULT_SOL_TARGET_SOL,
-  MIN_SOL_DEPOSIT_SOL,
   solToLamports,
   getCurvePda,
   getSolVaultPda,
-  getUserPositionPda,
 } from './constants.js';
 
 import { getBondingCurveState } from './poolState.js';
+
 /**
  * Build an initialize_curve instruction.
- * Creates the bonding curve PDA, SOL vault, token vault, and deposits initial reserves.
  */
 export async function buildInitializeCurveTx(
   connection,
@@ -45,7 +41,7 @@ export async function buildInitializeCurveTx(
   const tokenVault = getAssociatedTokenAddressSync(
     mint,
     curvePda,
-    true, // allowOwnerOffCurve - PDA is owner
+    true,
     TOKEN_2022_PROGRAM_ID
   );
 
@@ -62,7 +58,7 @@ export async function buildInitializeCurveTx(
   const transaction = new Transaction();
 
   // Platform fee
-  const platformFeeLamports = solToLamports(0.1); // 0.1 SOL platform fee
+  const platformFeeLamports = solToLamports(0.1);
   if (platformFeeLamports > 0) {
     const treasuryAddress = process.env.NEXT_PUBLIC_TREASURY_WALLET || process.env.TREASURY_WALLET_ADDRESS;
     if (treasuryAddress) {
@@ -76,7 +72,6 @@ export async function buildInitializeCurveTx(
     }
   }
 
-  // Build the instruction data manually (Anchor discriminator + args)
   // discriminator = sha256("global:initialize_curve")[0..8]
   const discriminator = Buffer.from([170, 84, 186, 253, 131, 149, 95, 213]);
   const data = Buffer.alloc(8 + 8 + 8 + 8 + 2);
@@ -149,7 +144,6 @@ export async function buildBuyTokensTx(
 
   const transaction = new Transaction();
 
-  // discriminator for buy_tokens = sha256("global:buy_tokens")[0..8]
   const discriminator = Buffer.from([189, 21, 230, 133, 247, 2, 110, 42]);
   const data = Buffer.alloc(8 + 8 + 8);
   discriminator.copy(data, 0);
@@ -218,7 +212,6 @@ export async function buildSellTokensTx(
 
   const transaction = new Transaction();
 
-  // discriminator for sell_tokens = sha256("global:sell_tokens")[0..8]
   const discriminator = Buffer.from([114, 242, 25, 12, 62, 126, 92, 2]);
   const data = Buffer.alloc(8 + 8 + 8);
   discriminator.copy(data, 0);
@@ -252,176 +245,9 @@ export async function buildSellTokensTx(
 }
 
 /**
- * Build an add_liquidity instruction.
- */
-export async function buildAddLiquidityTx(
-  connection,
-  walletAddress,
-  mintAddress,
-  solAmount,
-  tokenAmount
-) {
-  const payer = new PublicKey(walletAddress);
-  const mint = new PublicKey(mintAddress);
-
-  const [curvePda] = getCurvePda(mint);
-  const [solVaultPda] = getSolVaultPda(curvePda);
-  const [userPositionPda] = getUserPositionPda(curvePda, payer);
-
-  const tokenVault = getAssociatedTokenAddressSync(
-    mint,
-    curvePda,
-    true,
-    TOKEN_2022_PROGRAM_ID
-  );
-
-  const creatorTokenAccount = getAssociatedTokenAddressSync(
-    mint,
-    payer,
-    false,
-    TOKEN_2022_PROGRAM_ID
-  );
-
-  const solLamports = solToLamports(solAmount);
-
-  const transaction = new Transaction();
-
-  // discriminator for add_liquidity = sha256("global:add_liquidity")[0..8]
-  const discriminator = Buffer.from([181, 157, 89, 67, 143, 182, 52, 72]);
-  const data = Buffer.alloc(8 + 8 + 8);
-  discriminator.copy(data, 0);
-  data.writeBigUInt64LE(BigInt(solLamports), 8);
-  data.writeBigUInt64LE(BigInt(tokenAmount), 16);
-
-  const keys = [
-    { pubkey: payer, isSigner: true, isWritable: true },
-    { pubkey: curvePda, isSigner: false, isWritable: true },
-    { pubkey: mint, isSigner: false, isWritable: false },
-    { pubkey: solVaultPda, isSigner: false, isWritable: true },
-    { pubkey: tokenVault, isSigner: false, isWritable: true },
-    { pubkey: creatorTokenAccount, isSigner: false, isWritable: true },
-    { pubkey: userPositionPda, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },
-  ];
-
-  transaction.add({
-    keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
-    data,
-  });
-
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  transaction.recentBlockhash = blockhash;
-  transaction.feePayer = payer;
-
-  return { transaction, curvePda: curvePda.toBase58() };
-}
-
-/**
- * Build a remove_liquidity instruction.
- */
-export async function buildRemoveLiquidityTx(
-  connection,
-  walletAddress,
-  mintAddress,
-  lpTokens
-) {
-  const payer = new PublicKey(walletAddress);
-  const mint = new PublicKey(mintAddress);
-
-  const [curvePda] = getCurvePda(mint);
-  const [solVaultPda] = getSolVaultPda(curvePda);
-  const [userPositionPda] = getUserPositionPda(curvePda, payer);
-
-  const tokenVault = getAssociatedTokenAddressSync(
-    mint,
-    curvePda,
-    true,
-    TOKEN_2022_PROGRAM_ID
-  );
-
-  const creatorTokenAccount = getAssociatedTokenAddressSync(
-    mint,
-    payer,
-    false,
-    TOKEN_2022_PROGRAM_ID
-  );
-
-  const transaction = new Transaction();
-
-  // discriminator for remove_liquidity = sha256("global:remove_liquidity")[0..8]
-  const discriminator = Buffer.from([80, 85, 209, 72, 24, 206, 177, 108]);
-  const data = Buffer.alloc(8 + 8);
-  discriminator.copy(data, 0);
-  data.writeBigUInt64LE(BigInt(lpTokens), 8);
-
-  const keys = [
-    { pubkey: payer, isSigner: true, isWritable: true },
-    { pubkey: curvePda, isSigner: false, isWritable: true },
-    { pubkey: mint, isSigner: false, isWritable: false },
-    { pubkey: solVaultPda, isSigner: false, isWritable: true },
-    { pubkey: tokenVault, isSigner: false, isWritable: true },
-    { pubkey: creatorTokenAccount, isSigner: false, isWritable: true },
-    { pubkey: userPositionPda, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-    { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },
-  ];
-
-  transaction.add({
-    keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
-    data,
-  });
-
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  transaction.recentBlockhash = blockhash;
-  transaction.feePayer = payer;
-
-  return { transaction, curvePda: curvePda.toBase58() };
-}
-
-/**
- * Build a pause_curve instruction.
- */
-export async function buildPauseCurveTx(connection, walletAddress, mintAddress) {
-  const payer = new PublicKey(walletAddress);
-  const mint = new PublicKey(mintAddress);
-  const [curvePda] = getCurvePda(mint);
-
-  const transaction = new Transaction();
-
-  // discriminator for pause_curve = sha256("global:pause_curve")[0..8]
-  const discriminator = Buffer.from([239, 130, 222, 185, 53, 147, 181, 249]);
-  const data = Buffer.alloc(8);
-  discriminator.copy(data, 0);
-
-  const keys = [
-    { pubkey: payer, isSigner: true, isWritable: true },
-    { pubkey: curvePda, isSigner: false, isWritable: true },
-    { pubkey: mint, isSigner: false, isWritable: false },
-  ];
-
-  transaction.add({
-    keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
-    data,
-  });
-
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  transaction.recentBlockhash = blockhash;
-  transaction.feePayer = payer;
-
-  return { transaction, curvePda: curvePda.toBase58() };
-}
-
-/**
  * Build a migrate_to_dex instruction.
- * Graduates the curve to an external DEX: pays out remaining SOL and token
- * reserves to the creator and marks the curve as migrated. Creator only,
- * requires the curve to have reached its SOL target.
+ * Graduates the curve: pays out remaining SOL and tokens to the creator.
+ * The creator then uses the Meteora DLMM SDK via the frontend to create a pool.
  */
 export async function buildMigrateToDexTx(
   connection,
@@ -450,7 +276,6 @@ export async function buildMigrateToDexTx(
 
   const transaction = new Transaction();
 
-  // discriminator for migrate_to_dex = sha256("global:migrate_to_dex")[0..8]
   const discriminator = Buffer.from([246, 150, 122, 141, 49, 26, 211, 26]);
   const data = Buffer.alloc(8);
   discriminator.copy(data, 0);
@@ -480,6 +305,39 @@ export async function buildMigrateToDexTx(
 }
 
 /**
+ * Build a pause_curve instruction.
+ */
+export async function buildPauseCurveTx(connection, walletAddress, mintAddress) {
+  const payer = new PublicKey(walletAddress);
+  const mint = new PublicKey(mintAddress);
+  const [curvePda] = getCurvePda(mint);
+
+  const transaction = new Transaction();
+
+  const discriminator = Buffer.from([239, 130, 222, 185, 53, 147, 181, 249]);
+  const data = Buffer.alloc(8);
+  discriminator.copy(data, 0);
+
+  const keys = [
+    { pubkey: payer, isSigner: true, isWritable: true },
+    { pubkey: curvePda, isSigner: false, isWritable: true },
+    { pubkey: mint, isSigner: false, isWritable: false },
+  ];
+
+  transaction.add({
+    keys,
+    programId: BONDING_CURVE_PROGRAM_ID,
+    data,
+  });
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = payer;
+
+  return { transaction, curvePda: curvePda.toBase58() };
+}
+
+/**
  * Build a close_curve instruction.
  */
 export async function buildCloseCurveTx(connection, walletAddress, mintAddress) {
@@ -489,7 +347,6 @@ export async function buildCloseCurveTx(connection, walletAddress, mintAddress) 
 
   const transaction = new Transaction();
 
-  // discriminator for close_curve = sha256("global:close_curve")[0..8]
   const discriminator = Buffer.from([228, 177, 198, 182, 76, 121, 111, 104]);
   const data = Buffer.alloc(8);
   discriminator.copy(data, 0);

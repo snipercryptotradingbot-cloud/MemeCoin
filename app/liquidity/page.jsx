@@ -20,8 +20,6 @@ import {
   buildInitializeCurveTx,
   buildBuyTokensTx,
   buildSellTokensTx,
-  buildAddLiquidityTx,
-  buildRemoveLiquidityTx,
   buildCloseCurveTx,
   buildMigrateToDexTx,
 } from '@/app/lib/bondingCurve';
@@ -67,14 +65,9 @@ export default function LiquidityPage() {
   const [swapping, setSwapping] = useState(false);
   const [swapResult, setSwapResult] = useState(null);
 
-  // Add/Remove Liquidity
-  const [liqMode, setLiqMode] = useState('add');
-  const [liqSolAmount, setLiqSolAmount] = useState('');
-  const [liqTokenAmount, setLiqTokenAmount] = useState('');
-  const [liqLpAmount, setLiqLpAmount] = useState('');
+  // Liquidity state
   const [liqPool, setLiqPool] = useState(null);
   const [liqProcessing, setLiqProcessing] = useState(false);
-  const [liqResult, setLiqResult] = useState(null);
 
   // Record a confirmed on-chain action to D1 (positions + activity log)
   const recordPosition = useCallback(async (action, poolId, { sol, token, lp, tx } = {}) => {
@@ -370,141 +363,10 @@ export default function LiquidityPage() {
     }
   };
 
-  // Add liquidity
-  const handleAddLiquidity = async (e) => {
-    e.preventDefault();
-    if (!isConnected || !liqPool) return;
-
-    setLiqProcessing(true);
-    setLiqResult(null);
-    setTxError(null);
-
-    try {
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add_liquidity',
-          wallet: address,
-          mint_address: liqPool.mint || liqPool.mintAddress || liqPool.pool_address,
-          sol_amount: liqSolAmount || '0',
-          token_amount: liqTokenAmount || '0',
-          network,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      const { Transaction } = await import('@solana/web3.js');
-      const txBytes = Uint8Array.from(atob(data.transaction), c => c.charCodeAt(0));
-      const transaction = Transaction.from(txBytes);
-
-      const txSignature = await executeTx(transaction, 'Add Liquidity');
-
-      await recordPosition('add_liquidity', liqPool.poolId || liqPool.id, {
-        sol: parseFloat(liqSolAmount || '0'),
-        token: parseInt(liqTokenAmount || '0'),
-        tx: txSignature,
-      });
-
-      setLiqResult({
-        type: 'add',
-        solAmount: parseFloat(liqSolAmount || '0'),
-        tokenAmount: parseInt(liqTokenAmount || '0'),
-        txSignature,
-      });
-      setLiqSolAmount('');
-      setLiqTokenAmount('');
-      loadPools();
-      loadPositions();
-    } catch (err) {
-      setTxError(err.message);
-    } finally {
-      setLiqProcessing(false);
-    }
-  };
-
-  // Remove liquidity
-  const handleRemoveLiquidity = async (e) => {
-    e.preventDefault();
-    if (!isConnected || !liqPool || !liqLpAmount) return;
-
-    const mintAddress = liqPool.mint || liqPool.mintAddress || liqPool.pool_address || liqPool.curveAddress || liqPool.curve_address;
-
-    setLiqProcessing(true);
-    setLiqResult(null);
-    setTxError(null);
-
-    try {
-      // Snapshot reserves before removal to compute returned amounts
-      let before = null;
-      try {
-        if (connection) before = await getBondingCurveState(connection, mintAddress);
-      } catch (err) { /* non-fatal */ }
-
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'remove_liquidity',
-          wallet: address,
-          mint_address: mintAddress,
-          lp_tokens: liqLpAmount,
-          network,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      const { Transaction } = await import('@solana/web3.js');
-      const txBytes = Uint8Array.from(atob(data.transaction), c => c.charCodeAt(0));
-      const transaction = Transaction.from(txBytes);
-
-      const txSignature = await executeTx(transaction, 'Remove Liquidity');
-
-      // Derive returned amounts from the on-chain reserve delta
-      let solOut = 0;
-      let tokenOut = 0;
-      if (before) {
-        try {
-          if (connection) {
-            const after = await getBondingCurveState(connection, mintAddress);
-            if (after) {
-              solOut = Math.max(0, before.solReserves - after.solReserves) / 1e9;
-              tokenOut = Math.max(0, before.tokenReserves - after.tokenReserves);
-            }
-          }
-        } catch (err) { /* non-fatal */ }
-      }
-
-      await recordPosition('remove_liquidity', liqPool.poolId || liqPool.id, {
-        sol: solOut || null,
-        token: tokenOut || null,
-        lp: parseInt(liqLpAmount),
-        tx: txSignature,
-      });
-
-      setLiqResult({
-        type: 'remove',
-        lpTokens: parseInt(liqLpAmount),
-        txSignature,
-      });
-      setLiqLpAmount('');
-      loadPools();
-      loadPositions();
-    } catch (err) {
-      setTxError(err.message);
-    } finally {
-      setLiqProcessing(false);
-    }
-  };
-
   // Migrate pool to DEX (graduation)
   const handleMigrate = async () => {
     if (!isConnected || !searchedPool) return;
-    if (!confirm('Migrate this pool to a DEX? All remaining SOL and tokens will be returned to your wallet.')) return;
+    if (!confirm('Migrate this pool to Meteora DLMM? All remaining SOL and tokens will be returned to your wallet. You can then create a DLMM pool using the Meteora SDK.')) return;
 
     setLiqProcessing(true);
     setTxError(null);
@@ -541,11 +403,6 @@ export default function LiquidityPage() {
       setLiqProcessing(false);
     }
   };
-
-  // Available LP for the selected pool (from D1 positions)
-  const availableLp = (myPositions.find(
-    (p) => p.pool_id === searchedPool?.poolId || p.curve_address === searchedPool?.curveAddress
-  )?.lp_tokens) || 0;
 
   // Preview calculations
   const previewTokensOut = swapAmount && swapPool && swapMode === 'buy'
@@ -992,102 +849,46 @@ export default function LiquidityPage() {
             {/* Manage Liquidity Panel */}
             {searchedPool && isConnected && (
               <section className="card liq-panel animate-fade-in-up">
-                <h2 className="panel-title">Manage Liquidity</h2>
-                <p className="panel-desc">Add or remove liquidity from the pool. Any wallet can provide liquidity.</p>
+                <h2 className="panel-title">Pool Management</h2>
 
-                <div className="swap-tabs">
-                  <button
-                    className={`swap-tab ${liqMode === 'add' ? 'active' : ''}`}
-                    onClick={() => { setLiqMode('add'); setLiqResult(null); }}
-                  >
-                    Add Liquidity
-                  </button>
-                  <button
-                    className={`swap-tab ${liqMode === 'remove' ? 'active' : ''}`}
-                    onClick={() => { setLiqMode('remove'); setLiqResult(null); }}
-                  >
-                    Remove Liquidity
-                  </button>
-                </div>
-
-                {liqMode === 'add' ? (
-                  <form onSubmit={handleAddLiquidity} className="swap-form">
-                    <div className="input-group">
-                      <label className="input-label">SOL Amount</label>
-                      <input
-                        type="number"
-                        className="input"
-                        placeholder="5"
-                        min="0"
-                        step="0.1"
-                        value={liqSolAmount}
-                        onChange={(e) => setLiqSolAmount(e.target.value)}
-                      />
-                    </div>
-                    <div className="input-group">
-                      <label className="input-label">Token Amount</label>
-                      <input
-                        type="number"
-                        className="input"
-                        placeholder="500000000"
-                        min="0"
-                        value={liqTokenAmount}
-                        onChange={(e) => setLiqTokenAmount(e.target.value)}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="btn btn-mint btn-lg btn-full"
-                      disabled={liqProcessing || !isConnected}
-                    >
-                      {liqProcessing ? (
-                        <div className="spinner" style={{ width: 18, height: 18 }} />
-                      ) : (
-                        'Add Liquidity'
-                      )}
-                    </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleRemoveLiquidity} className="swap-form">
-                    <div className="input-group">
-                      <label className="input-label">LP Tokens to Burn</label>
-                      <input
-                        type="number"
-                        className="input"
-                        placeholder="100"
-                        min="1"
-                        required
-                        value={liqLpAmount}
-                        onChange={(e) => setLiqLpAmount(e.target.value)}
-                      />
-                      <span className="input-hint">Available: {availableLp.toLocaleString()} LP. You will receive proportional SOL and tokens back.</span>
-                    </div>
-                    <button
-                      type="submit"
-                      className="btn btn-primary btn-lg btn-full"
-                      disabled={liqProcessing || !isConnected}
-                    >
-                      {liqProcessing ? (
-                        <div className="spinner" style={{ width: 18, height: 18 }} />
-                      ) : (
-                        'Remove Liquidity'
-                      )}
-                    </button>
-                  </form>
-                )}
-
-                {liqResult && (
-                  <div className="success-toast animate-fade-in" style={{ marginTop: 'var(--space-3)' }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    {liqResult.type === 'add'
-                      ? `Added ${liqResult.solAmount} SOL + ${liqResult.tokenAmount.toLocaleString()} tokens`
-                      : `Removed ${liqResult.lpTokens} LP tokens`
-                    }
-                    <CopyButton text={liqResult.txSignature} />
+                {searchedPool.status === 'migrated' ? (
+                  <div>
+                    <p className="panel-desc" style={{ marginBottom: 'var(--space-4)' }}>
+                      This pool has graduated to Meteora DLMM. Liquidity is now managed via the Meteora SDK.
+                    </p>
+                    {searchedPool.dlmmPool && searchedPool.dlmmPool !== '11111111111111111111111111111111' && (
+                      <a
+                        href={`https://app.meteora.ag/pools/${searchedPool.dlmmPool}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-primary btn-sm btn-full"
+                      >
+                        View on Meteora
+                      </a>
+                    )}
                   </div>
+                ) : searchedPool.status === 'active' ? (
+                  <div>
+                    <p className="panel-desc" style={{ marginBottom: 'var(--space-4)' }}>
+                      {address === searchedPool.creator
+                        ? 'You are the creator. When the curve reaches its SOL target, you can migrate to Meteora DLMM.'
+                        : 'Liquidity is managed by the bonding curve. Trade via the swap panel above.'}
+                    </p>
+                    {(searchedPool.progress || 0) >= 100 && address === searchedPool.creator && (
+                      <button
+                        className="btn btn-danger btn-sm btn-full"
+                        onClick={handleMigrate}
+                        disabled={liqProcessing}
+                      >
+                        {liqProcessing ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Graduate to Meteora DLMM'}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="panel-desc">Pool is {searchedPool.status}.</p>
                 )}
 
-                {address === searchedPool.creator && (
+                {address === searchedPool.creator && searchedPool.status !== 'migrated' && (
                   <button
                     className="btn btn-danger btn-sm btn-full"
                     style={{ marginTop: 'var(--space-3)' }}

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { Connection } from '@solana/web3.js';
-import { getUserPosition } from '@/app/lib/poolState';
 import { getCurvePda } from '@/app/lib/constants';
 
 function getConnection(network = 'devnet') {
@@ -23,24 +22,6 @@ export async function GET(request) {
 
     if (!wallet) {
       return NextResponse.json({ error: 'wallet is required' }, { status: 400 });
-    }
-
-    // Get on-chain position for specific curve
-    const curveAddress = searchParams.get('curve_address');
-    const mintAddress = searchParams.get('mint_address');
-
-    if (curveAddress || mintAddress) {
-      const network = searchParams.get('network') || 'devnet';
-      const connection = getConnection(network);
-
-      let curveAddr = curveAddress;
-      if (mintAddress && !curveAddress) {
-        const [pda] = getCurvePda(mintAddress);
-        curveAddr = pda.toBase58();
-      }
-
-      const position = await getUserPosition(connection, curveAddr, wallet);
-      return NextResponse.json({ position });
     }
 
     // Get all positions from D1
@@ -97,7 +78,7 @@ export async function POST(request) {
     ).run();
 
     // Update pool totals based on action
-    if (action === 'add_liquidity' || action === 'initialize') {
+    if (action === 'initialize') {
       await db.prepare(
         `UPDATE liquidity_pools SET
           sol_accumulated = sol_accumulated + ?,
@@ -105,19 +86,11 @@ export async function POST(request) {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`
       ).bind(sol_amount || 0, token_amount || 0, pool_id).run();
-    } else if (action === 'remove_liquidity') {
-      await db.prepare(
-        `UPDATE liquidity_pools SET
-          sol_accumulated = MAX(0, sol_accumulated - ?),
-          token_reserves = MAX(0, token_reserves - ?),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?`
-      ).bind(sol_amount || 0, token_amount || 0, pool_id).run();
     } else if (action === 'migrate') {
       await db.prepare(
         `UPDATE liquidity_pools SET
           is_migrated = 1,
-          amm = 'raydium',
+          amm = 'meteora',
           lp_burned = 1,
           status = 'migrated',
           updated_at = CURRENT_TIMESTAMP

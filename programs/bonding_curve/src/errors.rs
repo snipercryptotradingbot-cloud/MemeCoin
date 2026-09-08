@@ -35,9 +35,6 @@ pub enum BondingCurveError {
     #[msg("Only the curve creator can perform this action")]
     Unauthorized,
 
-    #[msg("Insufficient LP tokens for removal")]
-    InsufficientLpTokens,
-
     #[msg("Curve has no reserves to withdraw")]
     NoReserves,
 

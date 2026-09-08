@@ -50,6 +50,5 @@ pub fn close_curve(ctx: Context<AdminAction>) -> Result<()> {
 
     curve.status = CurveStatus::Closed;
     msg!("Curve closed for mint: {}", curve.mint);
-    msg!("Creator should withdraw remaining SOL and tokens via remove_liquidity");
     Ok(())
 }

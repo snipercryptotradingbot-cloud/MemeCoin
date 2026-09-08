@@ -4,8 +4,6 @@ import {
   buildInitializeCurveTx,
   buildBuyTokensTx,
   buildSellTokensTx,
-  buildAddLiquidityTx,
-  buildRemoveLiquidityTx,
   buildPauseCurveTx,
   buildCloseCurveTx,
   buildMigrateToDexTx,
@@ -98,10 +96,9 @@ export async function GET(request) {
  *   initialize - Build initialize_curve transaction
  *   buy - Build buy_tokens transaction
  *   sell - Build sell_tokens transaction
- *   add_liquidity - Build add_liquidity transaction
- *   remove_liquidity - Build remove_liquidity transaction
  *   pause - Build pause_curve transaction
  *   close - Build close_curve transaction
+ *   migrate - Build migrate_to_dex transaction
  *   confirm - Record confirmed transaction to D1
  */
 export async function POST(request) {
@@ -245,37 +242,6 @@ export async function POST(request) {
           mint_address,
           parseInt(token_amount),
           parseFloat(min_sol_out || '0')
-        );
-        break;
-      }
-
-      case 'add_liquidity': {
-        const { sol_amount, token_amount } = body;
-        if (!sol_amount && !token_amount) {
-          return NextResponse.json({ error: 'sol_amount or token_amount required' }, { status: 400 });
-        }
-
-        result = await buildAddLiquidityTx(
-          connection,
-          wallet,
-          mint_address,
-          parseFloat(sol_amount || '0'),
-          parseInt(token_amount || '0')
-        );
-        break;
-      }
-
-      case 'remove_liquidity': {
-        const { lp_tokens } = body;
-        if (!lp_tokens) {
-          return NextResponse.json({ error: 'lp_tokens is required' }, { status: 400 });
-        }
-
-        result = await buildRemoveLiquidityTx(
-          connection,
-          wallet,
-          mint_address,
-          parseInt(lp_tokens)
         );
         break;
       }

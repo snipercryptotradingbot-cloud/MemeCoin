@@ -9,20 +9,19 @@ export const BONDING_CURVE_PROGRAM_ID = new PublicKey(
 export const CURVE_SEED = Buffer.from('bonding_curve');
 export const SOL_VAULT_SEED = Buffer.from('sol_vault');
 export const TOKEN_VAULT_SEED = Buffer.from('token_vault');
-export const USER_POSITION_SEED = Buffer.from('user_position');
 
 // Fee defaults
 export const DEFAULT_FEE_BASIS_POINTS = 100; // 1%
 export const DEFAULT_SOL_TARGET_SOL = 85;
 export const MIN_SOL_DEPOSIT_SOL = 1;
 export const PLATFORM_FEE_SOL = parseFloat(process.env.NEXT_PUBLIC_PLATFORM_FEE_SOL || '0.1');
-export const MIGRATE_FEE_SOL = parseFloat(process.env.NEXT_PUBLIC_MIGRATE_FEE_SOL || '0.05');
 
 // Curve status enum values
 export const CurveStatus = {
   Active: 0,
   Paused: 1,
   Closed: 2,
+  Migrated: 3,
 };
 
 // Treasury wallet
@@ -46,18 +45,6 @@ export function getSolVaultPda(curveAddress) {
   const curve = typeof curveAddress === 'string' ? new PublicKey(curveAddress) : curveAddress;
   return PublicKey.findProgramAddressSync(
     [SOL_VAULT_SEED, curve.toBuffer()],
-    BONDING_CURVE_PROGRAM_ID
-  );
-}
-
-/**
- * Derive the user position PDA address
- */
-export function getUserPositionPda(curveAddress, userAddress) {
-  const curve = typeof curveAddress === 'string' ? new PublicKey(curveAddress) : curveAddress;
-  const user = typeof userAddress === 'string' ? new PublicKey(userAddress) : userAddress;
-  return PublicKey.findProgramAddressSync(
-    [USER_POSITION_SEED, curve.toBuffer(), user.toBuffer()],
     BONDING_CURVE_PROGRAM_ID
   );
 }

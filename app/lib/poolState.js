@@ -1,9 +1,11 @@
 import { PublicKey } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { getCurvePda, getSolVaultPda, getUserPositionPda, BONDING_CURVE_PROGRAM_ID } from './constants.js';
+import { getCurvePda, getSolVaultPda, BONDING_CURVE_PROGRAM_ID } from './constants.js';
 
-const CURVE_ACCOUNT_SIZE = 8 + 32 + 32 + 1 + 1 + 1 + 1 + 8 + 8 + 8 + 2 + 32 + 8 + 8 + 32; // ~208 bytes
-const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 1 + 8 + 8 + 8 + 16; // ~113 bytes
+// BondingCurve: discriminator(8) + creator(32) + mint(32) + curveBump(1) + solVaultBump(1) + status(1)
+//   + solReserves(8) + tokenReserves(8) + initialSolTarget(8) + feeBasisPoints(2)
+//   + platformWallet(32) + totalSwaps(8) + createdAt(8) + dlmmPool(32) + padding(32)
+const CURVE_ACCOUNT_SIZE = 8 + 32 + 32 + 1 + 1 + 1 + 8 + 8 + 8 + 2 + 32 + 8 + 8 + 32 + 32; // 232 bytes
 
 /**
  * Deserialize a BondingCurve account from raw data.
@@ -15,7 +17,6 @@ function deserializeCurve(data) {
   const mint = new PublicKey(data.slice(offset, offset + 32)); offset += 32;
   const curveBump = data[offset]; offset += 1;
   const solVaultBump = data[offset]; offset += 1;
-  const tokenVaultBump = data[offset]; offset += 1;
   const status = data[offset]; offset += 1;
   const solReserves = Number(data.readBigUInt64LE(offset)); offset += 8;
   const tokenReserves = Number(data.readBigUInt64LE(offset)); offset += 8;
@@ -24,14 +25,13 @@ function deserializeCurve(data) {
   const platformWallet = new PublicKey(data.slice(offset, offset + 32)); offset += 32;
   const totalSwaps = Number(data.readBigUInt64LE(offset)); offset += 8;
   const createdAt = Number(data.readBigInt64LE(offset)); offset += 8;
-  const totalLpSupply = Number(data.readBigUInt64LE(offset)); offset += 8;
+  const dlmmPool = new PublicKey(data.slice(offset, offset + 32)); offset += 32;
 
   return {
     creator: creator.toBase58(),
     mint: mint.toBase58(),
     curveBump,
     solVaultBump,
-    tokenVaultBump,
     status,
     solReserves,
     tokenReserves,
@@ -40,30 +40,7 @@ function deserializeCurve(data) {
     platformWallet: platformWallet.toBase58(),
     totalSwaps,
     createdAt,
-    totalLpSupply,
-  };
-}
-
-/**
- * Deserialize a UserPosition account from raw data.
- */
-function deserializePosition(data) {
-  let offset = 8; // skip discriminator
-
-  const user = new PublicKey(data.slice(offset, offset + 32)); offset += 32;
-  const curve = new PublicKey(data.slice(offset, offset + 32)); offset += 32;
-  const bump = data[offset]; offset += 1;
-  const solDeposited = Number(data.readBigUInt64LE(offset)); offset += 8;
-  const tokensDeposited = Number(data.readBigUInt64LE(offset)); offset += 8;
-  const lpTokens = Number(data.readBigUInt64LE(offset)); offset += 8;
-
-  return {
-    user: user.toBase58(),
-    curve: curve.toBase58(),
-    bump,
-    solDeposited,
-    tokensDeposited,
-    lpTokens,
+    dlmmPool: dlmmPool.toBase58(),
   };
 }
 
@@ -102,22 +79,7 @@ export async function getBondingCurveState(connection, mintAddress) {
 }
 
 /**
- * Fetch user's position in a specific bonding curve.
- */
-export async function getUserPosition(connection, curveAddress, userAddress) {
-  const curve = new PublicKey(curveAddress);
-  const user = new PublicKey(userAddress);
-  const [positionPda] = getUserPositionPda(curve, user);
-
-  const accountInfo = await connection.getAccountInfo(positionPda);
-  if (!accountInfo) return null;
-
-  return deserializePosition(accountInfo.data);
-}
-
-/**
  * Fetch all bonding curves (via getProgramAccounts).
- * Note: This can be slow on mainnet with many curves. Consider using indexed data in production.
  */
 export async function getAllBondingCurves(connection) {
   const accounts = await connection.getProgramAccounts(BONDING_CURVE_PROGRAM_ID, {
@@ -157,8 +119,8 @@ export async function getPoolSummary(connection, mintAddress, dbPool = null) {
     feeBasisPoints: curve.feeBasisPoints,
     feePercent: (curve.feeBasisPoints / 100).toFixed(1) + '%',
     totalSwaps: curve.totalSwaps,
-    totalLpSupply: curve.totalLpSupply,
     createdAt: curve.createdAt,
+    dlmmPool: curve.dlmmPool,
     // Merge DB data if available
     ...(dbPool ? {
       poolId: dbPool.id,

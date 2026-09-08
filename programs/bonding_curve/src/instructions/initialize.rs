@@ -81,7 +81,6 @@ pub fn handler(
     curve.mint = ctx.accounts.mint.key();
     curve.curve_bump = ctx.bumps.curve;
     curve.sol_vault_bump = ctx.bumps.sol_vault;
-    curve.token_vault_bump = 0; // ATA has no PDA bump
     curve.status = CurveStatus::Active;
     curve.sol_reserves = sol_amount;
     curve.token_reserves = token_amount;
@@ -90,7 +89,7 @@ pub fn handler(
     curve.platform_wallet = ctx.accounts.creator.key(); // defaults to creator, can be updated
     curve.total_swaps = 0;
     curve.created_at = clock.unix_timestamp;
-    curve.total_lp_supply = 100; // initial LP for creator
+    curve.dlmm_pool = Pubkey::default(); // set on migration
     curve.padding = [0u8; 32];
 
     // Transfer SOL from creator to SOL vault PDA
