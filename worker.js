@@ -267,9 +267,17 @@ async function authHandler(request, env) {
       }
 
       // Issue JWT
-      const token = await createJWT({ sub: wallet_address, wallet: wallet_address, role: 'user' }, env.JWT_SECRET);
+      const jwtPayload = { sub: wallet_address, wallet: wallet_address, role: 'user' };
+      const token = await createJWT(jwtPayload, env.JWT_SECRET);
 
-      return json({ success: true, token, wallet: wallet_address });
+      // Fetch full user from DB
+      let user = { id: wallet_address, name: wallet_address.slice(0, 8), provider: 'wallet', role: 'user' };
+      if (env.DB) {
+        const dbUser = await env.DB.prepare('SELECT id, email, name, username, avatar, bio, wallet_address, connected_wallet, provider, role, credits_balance, preferences, created_at FROM users WHERE id = ?').bind(wallet_address).first();
+        if (dbUser) user = dbUser;
+      }
+
+      return json({ success: true, token, user });
     } catch (err) {
       console.error('Auth SIWS error:', err);
       return json({ error: 'Authentication failed' }, 500);

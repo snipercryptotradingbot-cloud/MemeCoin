@@ -254,13 +254,13 @@ export default function Navbar() {
                 <div className="avatar-placeholder">
                   {user.name ? user.name[0].toUpperCase() : 'U'}
                 </div>
-                <span className="navbar-user-name">{user.name || user.email.split('@')[0]}</span>
+                <span className="navbar-user-name">{user.name || (user.email ? user.email.split('@')[0] : 'User')}</span>
                 <span className="navbar-user-badge">{user.role === 'admin' ? 'Admin' : 'User'}</span>
               </div>
 
               <div className="dropdown-menu dropdown-menu-right">
                 <div className="dropdown-header">
-                  <p className="dropdown-user-email">{user.email}</p>
+                  <p className="dropdown-user-email">{user.email || user.username || 'No email'}</p>
                   {user.username && <p className="dropdown-user-handle">@{user.username}</p>}
                 </div>
                 <div className="divider" style={{ margin: '4px 0' }} />
@@ -410,7 +410,7 @@ export default function Navbar() {
               {user ? (
                 <div className="mobile-user-actions">
                   <div className="mobile-user-header">
-                    <span className="mobile-user-name">{user.name || user.email}</span>
+                    <span className="mobile-user-name">{user.name || user.username || 'User'}</span>
                     <span className="mobile-user-badge">{user.role}</span>
                   </div>
                   <button className="btn btn-secondary btn-full-width" onClick={() => { logout(); setMobileOpen(false); }}>
