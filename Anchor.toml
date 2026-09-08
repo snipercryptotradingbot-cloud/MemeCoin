@@ -9,7 +9,7 @@ skip-lint = false
 bonding_curve = "3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6"
 
 [programs.mainnet]
-bonding_curve = "He6n9nSEoMdUNZL6AbuRFcPSAh2SgiwZg3tfVmdhCtB4"
+bonding_curve = "6LAcMQeg8TyvMcveNMFmwUTkLyHa49kfzoTm18TjD151"
 
 [registry]
 url = "https://api.apr.dev"

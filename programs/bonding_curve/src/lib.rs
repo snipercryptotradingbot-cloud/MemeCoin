@@ -8,7 +8,7 @@ pub mod state;
 use instructions::*;
 
 #[cfg(feature = "mainnet")]
-declare_id!("He6n9nSEoMdUNZL6AbuRFcPSAh2SgiwZg3tfVmdhCtB4");
+declare_id!("6LAcMQeg8TyvMcveNMFmwUTkLyHa49kfzoTm18TjD151");
 #[cfg(not(feature = "mainnet"))]
 declare_id!("3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6");
 

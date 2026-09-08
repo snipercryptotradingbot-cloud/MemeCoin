@@ -31,7 +31,7 @@ jobs:
 
       - name: Install program keypair
         env:
-          PROGRAM_KEYPAIR: ${{ secrets.SOLANA_PROGRAM_KEYPAIR }}
+          PROGRAM_KEYPAIR: ${{ github.ref_name == 'main' && secrets.SOLANA_MAINNET_PROGRAM_KEYPAIR || secrets.SOLANA_PROGRAM_KEYPAIR }}
         run: |
           mkdir -p target/deploy
           printf '%s' "$PROGRAM_KEYPAIR" | base64 -d > target/deploy/bonding_curve-keypair.json
