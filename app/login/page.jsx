@@ -1,15 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
 
 export default function LoginPage() {
-  const { login, loginWithGoogle, isLoading } = useAuth();
+  const { user, login, loginWithGoogle, isLoading } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  const getRedirect = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('next') || '/dashboard';
+  };
+
+  useEffect(() => {
+    if (user && !isLoading) router.replace(getRedirect());
+  }, [user, isLoading, router]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,6 +31,7 @@ export default function LoginPage() {
     }
     try {
       await login(email, password);
+      router.push(getRedirect());
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
     }
@@ -30,6 +42,7 @@ export default function LoginPage() {
     setGoogleLoading(true);
     try {
       await loginWithGoogle();
+      router.push(getRedirect());
     } catch (err) {
       setError(err.message || 'Google sign-in failed.');
     } finally {

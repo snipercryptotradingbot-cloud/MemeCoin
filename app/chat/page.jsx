@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import AuthGuard from '@/app/components/AuthGuard';
 
 const DEFAULT_ROOMS = [
   { id: 'general', name: 'General', desc: 'Open community discussion across creators and traders.', badge: 'G', online: 0, members: '0' },
@@ -248,6 +249,7 @@ export default function ChatPage() {
   const emojis = ['😀', '😂', '🔥', '🚀', '💎', '🎉', '❤️', '💯', '👀', '🤣', '🙌', '🤑', '🌙', '⚡', '💪', '👋', '🎯', '💥', '🤝', '✨'];
 
   return (
+    <AuthGuard>
     <div className="chat-shell-container">
       <div className="chat-grid-layout">
         <aside className={`chat-sidebar ${sidebarOpen ? 'is-open' : ''}`}>
@@ -490,5 +492,6 @@ export default function ChatPage() {
         }
       `}</style>
     </div>
+    </AuthGuard>
   );
 }

@@ -9,6 +9,7 @@ import TokenPreviewCard from '@/app/components/TokenPreviewCard';
 import ProgressOverlay from '@/app/components/ProgressOverlay';
 import NetworkBadge from '@/app/components/NetworkBadge';
 import { useToken } from '@/app/providers/TokenProvider';
+import AuthGuard from '@/app/components/AuthGuard';
 import { useToast } from '@/app/components/Toast';
 import { uploadImage, uploadMetadata } from '@/app/lib/pinata';
 import { createMemeCoin } from '@/app/lib/createToken';
@@ -167,6 +168,7 @@ export default function CreatePage() {
   };
 
   return (
+    <AuthGuard>
     <div className="create-page" id="create-page">
       <div className="container container-sm">
         {/* Header */}
@@ -739,5 +741,6 @@ export default function CreatePage() {
         }
       `}</style>
     </div>
+    </AuthGuard>
   );
 }

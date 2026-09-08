@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/app/providers/AuthProvider';
 import NetworkBadge from '@/app/components/NetworkBadge';
+import AuthGuard from '@/app/components/AuthGuard';
 
 export default function DashboardPage() {
   const { user, token, isLoading, logout, getAuthHeaders } = useAuth();
@@ -63,6 +64,7 @@ export default function DashboardPage() {
   }
 
   return (
+    <AuthGuard>
     <div className="dashboard-page" id="dashboard-page">
       <div className="container">
         <header className="dashboard-header">
@@ -259,5 +261,6 @@ export default function DashboardPage() {
         @media (min-width: 768px) { .dashboard-card.wide { grid-column: span 2; } }
       `}</style>
     </div>
+    </AuthGuard>
   );
 }

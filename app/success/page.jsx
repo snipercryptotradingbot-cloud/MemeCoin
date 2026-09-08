@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
+import AuthGuard from '@/app/components/AuthGuard';
 import ConfettiEffect from '@/app/components/ConfettiEffect';
 import CopyButton from '@/app/components/CopyButton';
 import { getExplorerUrl, shortenAddress, getShareTweetUrl } from '@/app/lib/solana';
@@ -218,12 +219,14 @@ function SuccessContent() {
 
 export default function SuccessPage() {
   return (
-    <Suspense fallback={
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '120px 0' }}>
-        <div className="spinner spinner-lg" />
-      </div>
-    }>
-      <SuccessContent />
-    </Suspense>
+    <AuthGuard>
+      <Suspense fallback={
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '120px 0' }}>
+          <div className="spinner spinner-lg" />
+        </div>
+      }>
+        <SuccessContent />
+      </Suspense>
+    </AuthGuard>
   );
 }

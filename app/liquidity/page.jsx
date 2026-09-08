@@ -5,6 +5,7 @@ import { useAppKitAccount, useAppKitProvider, useAppKitNetwork } from '@reown/ap
 import { useAppKitConnection } from '@reown/appkit-adapter-solana/react';
 import CopyButton from '@/app/components/CopyButton';
 import NetworkBadge from '@/app/components/NetworkBadge';
+import AuthGuard from '@/app/components/AuthGuard';
 import { shortenAddress } from '@/app/lib/solana';
 import {
   calculateTokensOut,
@@ -584,6 +585,7 @@ export default function LiquidityPage() {
     : 0;
 
   return (
+    <AuthGuard>
     <div className="liquidity-page" id="liquidity-page">
       <div className="container">
 
@@ -1822,5 +1824,6 @@ export default function LiquidityPage() {
       `}</style>
 
     </div>
+    </AuthGuard>
   );
 }
