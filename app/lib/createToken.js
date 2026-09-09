@@ -160,14 +160,13 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     );
   }
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-  transaction.recentBlockhash = blockhash;
   transaction.feePayer = payer;
 
   transaction.partialSign(mintKeypair);
 
   const txSignature = await walletProvider.sendTransaction(transaction, connection);
 
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
 
   return { mintAddress: mint.toBase58(), txSignature };
