@@ -699,6 +699,7 @@ export default function Navbar() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          width: 20px;
           flex-shrink: 0;
           color: var(--muted);
           transition: color var(--transition-fast);
@@ -796,7 +797,7 @@ export default function Navbar() {
           display: flex;
           align-items: center;
           gap: var(--space-2);
-          min-width: 180px;
+          min-width: 0;
           justify-content: flex-end;
         }
 
@@ -1111,20 +1112,6 @@ export default function Navbar() {
           border-radius: 10px;
         }
 
-        .dropdown-link-icon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          color: var(--muted);
-          transition: color var(--transition-fast);
-        }
-
-        .dropdown-link:hover .dropdown-link-icon,
-        .dropdown-link.active .dropdown-link-icon {
-          color: var(--brand-pink);
-        }
-
         .dropdown-header {
           padding: 10px 14px 8px;
         }
@@ -1136,14 +1123,11 @@ export default function Navbar() {
           .navbar-hamburger {
             display: flex;
           }
-          .navbar-auth.guest .btn-ghost {
+          .navbar-auth.guest {
             display: none;
           }
-          .navbar-auth.guest .btn-mint {
-            padding: var(--space-1) var(--space-3);
-            font-size: var(--text-xs);
-            border-radius: var(--radius-pill);
-            white-space: nowrap;
+          .notifs-dropdown {
+            display: none;
           }
           .user-menu-dropdown {
             display: inline-flex !important;

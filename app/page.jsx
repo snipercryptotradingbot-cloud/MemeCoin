@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import GoogleOneTap from '@/app/components/GoogleOneTap';
 
 const FEATURES = [
   {
@@ -33,6 +34,7 @@ const STEPS = [
 export default function HomePage() {
   return (
     <div id="home-page">
+      <GoogleOneTap />
       <section className="hero page-hero" id="hero-section">
         <div className="container hero-container">
           <div className="hero-content stagger-children">
