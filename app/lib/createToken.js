@@ -28,7 +28,6 @@ function getMetadataPda(mint) {
 function createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer) {
   const metadataPda = getMetadataPda(mint);
 
-  // Borsh encode DataV2
   function borshString(str) {
     const buf = Buffer.from(str, 'utf8');
     const len = Buffer.alloc(4);
@@ -36,8 +35,8 @@ function createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer
     return Buffer.concat([len, buf]);
   }
 
-  // Discriminator for CreateMetadataAccountV3: sha256("global:create_metadata_account_v3")[..8]
-  const discriminator = Buffer.from([33, 205, 169, 68, 211, 188, 208, 161]);
+  // u8 discriminator = 33 for CreateMetadataAccountV3
+  const discriminator = Buffer.from([33]);
 
   const dataV2 = Buffer.concat([
     borshString(name),
@@ -57,8 +56,9 @@ function createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer
   const keys = [
     { pubkey: metadataPda, isSigner: false, isWritable: true },
     { pubkey: mint, isSigner: false, isWritable: false },
-    { pubkey: payer, isSigner: true, isWritable: true },
-    { pubkey: payer, isSigner: true, isWritable: true }, // updateAuthority (same as payer)
+    { pubkey: payer, isSigner: true, isWritable: true },  // mintAuthority
+    { pubkey: payer, isSigner: true, isWritable: true },  // payer
+    { pubkey: payer, isSigner: true, isWritable: true },  // updateAuthority
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
   ];
