@@ -166,7 +166,9 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
 
   transaction.partialSign(mintKeypair);
 
-  const txSignature = await walletProvider.sendTransaction(transaction, connection);
+  const txSignature = await walletProvider.sendTransaction(transaction, connection, {
+    skipPreflight: true,
+  });
 
   await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
 
