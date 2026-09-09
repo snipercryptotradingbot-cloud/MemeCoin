@@ -36,7 +36,6 @@ export default function HomePage() {
       <section className="hero page-hero" id="hero-section">
         <div className="container hero-container">
           <div className="hero-content stagger-children">
-            <span className="label-mint">THE FASTEST SPL TOKEN LAUNCHER ON SOLANA</span>
             <h1 className="hero-title">
               Launch Your Meme Coin<br />
               <span className="hero-title-accent">in 60 Seconds</span>
@@ -148,7 +147,7 @@ export default function HomePage() {
       <section className="cta-section" id="cta-section">
         <div className="container">
           <div className="cta-card">
-            <h2 className="cta-title">Ready to launch?</h2>
+            <h2 className="cta-title"><span className="cta-title-white">Ready to </span><span className="cta-title-accent">Launch?</span></h2>
             <p className="cta-desc">
               Create your meme coin in under a minute. It&apos;s that simple.
             </p>
@@ -165,7 +164,32 @@ export default function HomePage() {
           color: var(--on-dark);
           position: relative;
           overflow: hidden;
-          padding-top: var(--space-16);
+          min-height: calc(100vh - 64px);
+          display: flex;
+          align-items: center;
+          padding: var(--space-16) 0;
+        }
+
+        .hero::before {
+          content: '';
+          position: absolute;
+          top: -20%;
+          left: -10%;
+          width: 500px;
+          height: 500px;
+          background: radial-gradient(circle, rgba(60, 255, 208, 0.08) 0%, transparent 70%);
+          pointer-events: none;
+        }
+
+        .hero::after {
+          content: '';
+          position: absolute;
+          bottom: -30%;
+          right: -15%;
+          width: 600px;
+          height: 600px;
+          background: radial-gradient(circle, rgba(147, 51, 234, 0.06) 0%, transparent 70%);
+          pointer-events: none;
         }
 
         .hero-container {
@@ -370,22 +394,29 @@ export default function HomePage() {
         .cta-card {
           text-align: center;
           padding: var(--space-16) var(--space-8);
-          background: var(--bg-surface-soft);
-          border: 1px solid var(--hairline);
+          background: #0a0a0a;
+          border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: var(--radius-2xl);
         }
 
         .cta-title {
           font-size: var(--text-4xl);
           font-weight: 800;
-          color: var(--ink);
           margin-bottom: var(--space-3);
           letter-spacing: -0.02em;
         }
 
+        .cta-title-white {
+          color: #fff;
+        }
+
+        .cta-title-accent {
+          color: var(--brand-mint);
+        }
+
         .cta-desc {
           font-size: var(--text-lg);
-          color: var(--body);
+          color: #A0A0A0;
           margin-bottom: var(--space-8);
           max-width: 600px;
           margin-left: auto;

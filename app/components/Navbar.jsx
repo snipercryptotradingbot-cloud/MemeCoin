@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/providers/AuthProvider';
 
@@ -106,10 +106,55 @@ function NavIcon({ name, size = 16 }) {
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
+  const [notifsOpen, setNotifsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showGooglePrompt, setShowGooglePrompt] = useState(false);
+  const notifsRef = useRef(null);
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, loginWithGoogle, getAuthHeaders } = useAuth();
 
   const isAdmin = user && user.role === 'admin';
+
+  // Show "Continue with Google" prompt after 2.5s for guests
+  useEffect(() => {
+    if (user) { setShowGooglePrompt(false); return; }
+    if (['/login', '/register'].includes(pathname)) return;
+    const t = setTimeout(() => setShowGooglePrompt(true), 2500);
+    return () => clearTimeout(t);
+  }, [user, pathname]);
+
+  // Close notifications dropdown on outside click
+  useEffect(() => {
+    if (!notifsOpen) return;
+    const handleClick = (e) => { if (notifsRef.current && !notifsRef.current.contains(e.target)) setNotifsOpen(false); };
+    const handleKey = (e) => { if (e.key === 'Escape') setNotifsOpen(false); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleKey); };
+  }, [notifsOpen]);
+
+  const fetchNotifs = async () => {
+    try {
+      const h = getAuthHeaders();
+      const r = await fetch('/api/notifications?limit=10', { headers: h });
+      const d = await r.json();
+      if (d?.success) { setNotifications(d.notifications || []); setUnreadCount(d.unread_count || 0); }
+    } catch {}
+  };
+
+  const toggleNotifs = async () => {
+    if (!notifsOpen) await fetchNotifs();
+    setNotifsOpen(prev => !prev);
+  };
+
+  const markAllRead = async () => {
+    try {
+      await fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ mark_all: true }) });
+      setUnreadCount(0);
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: 1 })));
+    } catch {}
+  };
 
   const PRIMARY_LINKS = [
     { href: '/', label: 'Home', icon: 'home' },
@@ -239,12 +284,35 @@ export default function Navbar() {
         <div className="navbar-actions">
           {user ? (
             <>
-              <Link href="/settings" className="nav-bell" aria-label="Notifications">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-              </Link>
+              <div ref={notifsRef} className="nav-item-dropdown notifs-dropdown">
+                <button className="nav-bell" aria-label="Notifications" onClick={toggleNotifs}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                  {unreadCount > 0 && <span className="nav-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+                </button>
+                <div className={`dropdown-menu notifs-panel ${notifsOpen ? 'open' : ''}`}>
+                  <div className="dropdown-header">
+                    <p style={{ fontWeight: 700, color: 'var(--ink)', fontSize: 14, margin: 0 }}>Notifications</p>
+                  </div>
+                  <div className="divider" style={{ margin: '4px 0' }} />
+                  {notifications.length === 0 ? (
+                    <p className="notifs-empty">No notifications yet.</p>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id} className={`notif-item ${n.is_read ? '' : 'unread'}`}>
+                        <span className="notif-body">{n.body || n.type || 'Notification'}</span>
+                        <span className="notif-time">{n.created_at ? new Date(n.created_at).toLocaleDateString() : ''}</span>
+                      </div>
+                    ))
+                  )}
+                  {unreadCount > 0 && (
+                    <button className="notif-mark-read" onClick={markAllRead}>Mark all read</button>
+                  )}
+                  <Link href="/dashboard" className="notif-view-all" onClick={() => setNotifsOpen(false)}>View all</Link>
+                </div>
+              </div>
               <div
                 className="nav-item-dropdown user-menu-dropdown"
                 onMouseEnter={() => setActiveDropdown('user')}
@@ -252,10 +320,14 @@ export default function Navbar() {
               >
               <div className="navbar-user-chip cursor-pointer">
                 <div className="avatar-placeholder">
-                  {user.name ? user.name[0].toUpperCase() : 'U'}
+                  {user.avatar ? (
+                    <img className="avatar-img" src={user.avatar} alt="" />
+                  ) : (
+                    user.name ? user.name[0].toUpperCase() : 'U'
+                  )}
                 </div>
                 <span className="navbar-user-name">{user.name || (user.email ? user.email.split('@')[0] : 'User')}</span>
-                <span className="navbar-user-badge">{user.role === 'admin' ? 'Admin' : 'User'}</span>
+                {isAdmin && <span className="navbar-user-badge">Admin</span>}
               </div>
 
               <div className="dropdown-menu dropdown-menu-right">
@@ -308,6 +380,20 @@ export default function Navbar() {
             </>
           ) : (
             <div className="navbar-auth guest">
+              {showGooglePrompt && (
+                <button
+                  className="guest-google-pill"
+                  onClick={async () => { try { await loginWithGoogle(); } catch {} }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                  </svg>
+                  Continue with Google
+                </button>
+              )}
               <Link href="/login" className="btn btn-ghost btn-sm">Sign In</Link>
               <Link href="/register" className="btn btn-mint btn-sm">Create Account</Link>
             </div>
@@ -419,6 +505,20 @@ export default function Navbar() {
                 </div>
               ) : (
                 <div className="mobile-guest-actions">
+                  {showGooglePrompt && (
+                    <button
+                      className="guest-google-pill mobile-google-pill"
+                      onClick={async () => { try { await loginWithGoogle(); setMobileOpen(false); } catch {} }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                      </svg>
+                      Continue with Google
+                    </button>
+                  )}
                   <Link href="/login" className="btn btn-secondary" onClick={() => setMobileOpen(false)}>Sign In</Link>
                   <Link href="/register" className="btn btn-mint" onClick={() => setMobileOpen(false)}>Create Account</Link>
                 </div>
@@ -467,8 +567,16 @@ export default function Navbar() {
           flex-shrink: 0;
         }
 
+        .navbar-logo-icon {
+          display: inline-flex;
+          align-items: center;
+        }
+
         .navbar-logo-text {
           letter-spacing: -0.02em;
+          line-height: 1;
+          display: inline-flex;
+          align-items: center;
         }
 
         .navbar-links {
@@ -656,23 +764,6 @@ export default function Navbar() {
           font-size: var(--text-xs);
           color: var(--brand-mint-deep);
           font-weight: 600;
-        }
-
-        .nav-bell {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          color: var(--muted);
-          transition: all var(--transition-fast);
-          position: relative;
-        }
-
-        .nav-bell:hover {
-          background: var(--bg-surface-card);
-          color: var(--ink);
         }
 
         .dropdown-section-title {
@@ -898,6 +989,208 @@ export default function Navbar() {
           border: 1px dashed rgba(255, 77, 139, 0.2);
         }
 
+        /* ---- Hover gap bridge ---- */
+        .nav-item-dropdown::after {
+          content: '';
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          height: 14px;
+        }
+
+        /* ---- Avatar ---- */
+        .avatar-img {
+          width: 100%;
+          height: 100%;
+          border-radius: var(--radius-full);
+          object-fit: cover;
+        }
+
+        /* ---- Notifications bell badge ---- */
+        .nav-bell {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          color: var(--muted);
+          transition: all var(--transition-fast);
+          position: relative;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+        }
+
+        .nav-bell:hover {
+          background: var(--bg-surface-card);
+          color: var(--ink);
+        }
+
+        .nav-bell-badge {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          width: 16px;
+          height: 16px;
+          border-radius: var(--radius-full);
+          background: #ef4444;
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+          border: 2px solid var(--bg-canvas);
+        }
+
+        .notifs-dropdown {
+          position: static;
+        }
+
+        .notifs-panel {
+          left: auto;
+          right: 0;
+          transform: translateY(8px);
+          min-width: 300px;
+          max-height: 420px;
+          overflow-y: auto;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .notifs-panel.open {
+          opacity: 1;
+          pointer-events: auto;
+          transform: translateY(0);
+        }
+
+        .notifs-empty {
+          padding: 16px;
+          text-align: center;
+          font-size: var(--text-sm);
+          color: var(--muted);
+        }
+
+        .notif-item {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          cursor: default;
+        }
+
+        .notif-item.unread {
+          background: var(--bg-surface-soft);
+        }
+
+        .notif-body {
+          font-size: 14px;
+          color: var(--ink);
+          line-height: 1.4;
+        }
+
+        .notif-time {
+          font-size: var(--text-xs);
+          color: var(--muted);
+        }
+
+        .notif-mark-read {
+          display: block;
+          width: 100%;
+          padding: 10px 14px;
+          background: none;
+          border: none;
+          border-top: 1px solid var(--hairline);
+          color: var(--brand-mint);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          text-align: center;
+          transition: color var(--transition-fast);
+        }
+
+        .notif-mark-read:hover {
+          color: var(--brand-mint-deep);
+        }
+
+        .notif-view-all {
+          display: block;
+          width: 100%;
+          padding: 10px 14px;
+          text-align: center;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--muted);
+          border-top: 1px solid var(--hairline);
+          text-decoration: none;
+          transition: color var(--transition-fast);
+        }
+
+        .notif-view-all:hover {
+          color: var(--ink);
+        }
+
+        /* ---- Guest Google prompt ---- */
+        .guest-google-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 12px;
+          border-radius: var(--radius-pill);
+          border: 1px solid #dadce0;
+          background: white;
+          font-size: 13px;
+          font-weight: 600;
+          color: #3c4043;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background var(--transition-fast), box-shadow var(--transition-fast);
+        }
+
+        .guest-google-pill:hover {
+          background: #f8f9fa;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .mobile-google-pill {
+          width: 100%;
+          justify-content: center;
+          padding: 10px 14px;
+          font-size: 14px;
+        }
+
+        /* ---- Dropdown sizing fixes ---- */
+        .dropdown-menu {
+          padding: 10px;
+          gap: 4px;
+          min-width: 240px;
+        }
+
+        .dropdown-link {
+          padding: 11px 14px;
+          gap: 12px;
+          font-size: 14px;
+          border-radius: 10px;
+        }
+
+        .dropdown-link-icon {
+          width: 32px;
+          height: 32px;
+          background: var(--bg-surface-soft);
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .dropdown-header {
+          padding: 10px 14px 8px;
+        }
+
         @media (max-width: 940px) {
           .navbar-links {
             display: none;
@@ -913,6 +1206,9 @@ export default function Navbar() {
             font-size: var(--text-xs);
             border-radius: var(--radius-pill);
             white-space: nowrap;
+          }
+          .guest-google-pill {
+            display: none;
           }
           .user-menu-dropdown {
             display: inline-flex !important;

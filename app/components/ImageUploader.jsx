@@ -89,11 +89,16 @@ export default function ImageUploader({ onImageSelect, preview, error }) {
           onDragLeave={handleDragLeave}
           id="dropzone"
         >
-          <div className="dropzone-icon">📸</div>
-          <div className="dropzone-text">
-            <strong>Click to upload</strong> or drag and drop
+          <div className="dropzone-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="3" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
           </div>
-          <div className="dropzone-hint">PNG, JPG, GIF or WEBP (max 5MB)</div>
+          <div className="dropzone-btn">Upload Image</div>
+          <div className="dropzone-hint">or drag and drop</div>
+          <div className="dropzone-types">PNG, JPG, GIF or WEBP &middot; max 5MB</div>
         </div>
       )}
 
@@ -102,6 +107,68 @@ export default function ImageUploader({ onImageSelect, preview, error }) {
       <style jsx>{`
         .image-uploader {
           width: 100%;
+        }
+
+        .dropzone {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          padding: 40px 24px;
+          border: 2px dashed var(--hairline);
+          border-radius: var(--radius-lg);
+          background: var(--bg-surface-soft);
+          cursor: pointer;
+          transition: border-color var(--transition-fast), background var(--transition-fast);
+        }
+
+        .dropzone:hover {
+          border-color: var(--brand-mint);
+          background: rgba(60, 255, 208, 0.04);
+        }
+
+        .dropzone.active {
+          border-color: var(--brand-mint);
+          background: rgba(60, 255, 208, 0.08);
+        }
+
+        .dropzone-error {
+          border-color: var(--error) !important;
+          background: rgba(239, 68, 68, 0.04) !important;
+        }
+
+        .dropzone-icon {
+          color: var(--muted);
+          margin-bottom: 4px;
+        }
+
+        .dropzone-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 20px;
+          background: var(--ink);
+          color: white;
+          font-size: 14px;
+          font-weight: 600;
+          border-radius: var(--radius-pill);
+          transition: background var(--transition-fast);
+        }
+
+        .dropzone:hover .dropzone-btn {
+          background: #222;
+        }
+
+        .dropzone-hint {
+          font-size: 13px;
+          color: var(--muted);
+        }
+
+        .dropzone-types {
+          font-size: 12px;
+          color: var(--muted);
+          opacity: 0.7;
         }
 
         .image-preview-wrap {
@@ -159,10 +226,6 @@ export default function ImageUploader({ onImageSelect, preview, error }) {
 
         .image-preview-wrap:hover .image-preview-overlay {
           opacity: 1;
-        }
-
-        .dropzone-error {
-          border-color: var(--error) !important;
         }
       `}</style>
     </div>

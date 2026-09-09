@@ -139,9 +139,17 @@ main:has(.page-hero) {
 .page-hero {
   background: var(--bg-dark);
   color: var(--on-dark);
-  padding-top: var(--space-16);
-  padding-bottom: var(--space-12);
+  display: flex;
+  align-items: center;
+  min-height: calc(100vh - 64px);
+  padding: var(--space-16) 0;
   position: relative;
+  overflow: hidden;
+}
+
+.page-hero .container {
+  position: relative;
+  z-index: 1;
 }
 
 .page-hero .section-title {

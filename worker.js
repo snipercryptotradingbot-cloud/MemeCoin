@@ -320,6 +320,7 @@ async function authHandler(request, env) {
     const googleData = await googleResp.json();
     const email = googleData.email;
     const name = googleData.name || email.split('@')[0];
+    const avatar = googleData.picture || null;
     const userId = `google_${email}`;
     const now = new Date().toISOString();
 
@@ -328,13 +329,13 @@ async function authHandler(request, env) {
       if (existing) {
         const username = existing.username || await generateUniqueUsername(env, name, email);
         await env.DB.prepare(
-          'UPDATE users SET email = ?, name = ?, username = COALESCE(username, ?), last_login_at = ? WHERE id = ?'
-        ).bind(email, name, username, now, userId).run();
+          'UPDATE users SET email = ?, name = ?, avatar = ?, username = COALESCE(username, ?), last_login_at = ? WHERE id = ?'
+        ).bind(email, name, avatar, username, now, userId).run();
       } else {
         const username = await generateUniqueUsername(env, name, email);
         await env.DB.prepare(
-          'INSERT INTO users (id, email, name, username, provider, role, last_login_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(userId, email, name, username, 'google', email.toLowerCase().includes('admin') ? 'admin' : 'user', now, now).run();
+          'INSERT INTO users (id, email, name, avatar, username, provider, role, last_login_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(userId, email, name, avatar, username, 'google', email.toLowerCase().includes('admin') ? 'admin' : 'user', now, now).run();
       }
     }
 
@@ -343,7 +344,7 @@ async function authHandler(request, env) {
       env.JWT_SECRET
     );
 
-    return json({ success: true, token, user: { id: userId, email, name, provider: 'google' } });
+    return json({ success: true, token, user: { id: userId, email, name, avatar, provider: 'google' } });
   }
 
   // GET /api/auth/nonce — get a nonce for SIWS
