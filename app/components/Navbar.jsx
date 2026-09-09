@@ -964,11 +964,27 @@ export default function Navbar() {
         }
 
         /* ---- Avatar ---- */
+        .avatar-placeholder {
+          width: 30px;
+          height: 30px;
+          border-radius: var(--radius-full);
+          background: var(--bg-surface-strong);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--muted);
+          flex-shrink: 0;
+          overflow: hidden;
+        }
+
         .avatar-img {
           width: 100%;
           height: 100%;
           border-radius: var(--radius-full);
           object-fit: cover;
+          display: block;
         }
 
         /* ---- Notifications bell badge ---- */
