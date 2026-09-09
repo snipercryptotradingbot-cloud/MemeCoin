@@ -7,7 +7,7 @@ import {
 } from '@solana/web3.js';
 import {
   createInitializeMetadataPointerInstruction,
-  createInitializeMintInstruction,
+  createInitializeMint2Instruction,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
   createSetAuthorityInstruction,
@@ -54,13 +54,8 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     additionalMetadata: [],
   };
 
-  // Calculate the space needed for the mint account
-  // Base mint (82) + MetadataPointer ext header (3) + pointer (8+1) + TokenMetadata ext header (3) + packed metadata
-  const BASE_MINT_SIZE = 82;
-  const METADATA_POINTER_EXT_SIZE = 12; // 1 type + 2 len + 8 pointer + 1 padding
-  const TOKEN_METADATA_EXT_HEADER_SIZE = 3; // 1 type + 2 len
-  const packedMetadata = pack(tokenMetadata);
-  const totalLen = BASE_MINT_SIZE + METADATA_POINTER_EXT_SIZE + TOKEN_METADATA_EXT_HEADER_SIZE + packedMetadata.length;
+  // Calculate the space needed for the mint account (base mint only, no extensions)
+  const totalLen = 82;
 
   // Calculate rent
   const lamports = await connection.getMinimumBalanceForRentExemption(totalLen);
@@ -96,39 +91,15 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     })
   );
 
-  // 3. Initialize the Mint (must come before extension initialization)
+  // 3. Initialize the Mint
   transaction.add(
-    createInitializeMintInstruction(
+    createInitializeMint2Instruction(
       mint,
       config.decimals,
       payer,
       payer, // freeze authority (will be revoked if configured)
       TOKEN_2022_PROGRAM_ID
     )
-  );
-
-  // 4. Initialize Metadata Pointer (points to the mint itself)
-  transaction.add(
-    createInitializeMetadataPointerInstruction(
-      mint,
-      payer,
-      mint,
-      TOKEN_2022_PROGRAM_ID
-    )
-  );
-
-  // 5. Initialize token metadata on the mint account
-  transaction.add(
-    createInitializeInstruction({
-      programId: TOKEN_2022_PROGRAM_ID,
-      mint: mint,
-      metadata: mint,
-      name: tokenMetadata.name,
-      symbol: tokenMetadata.symbol,
-      uri: tokenMetadata.uri,
-      mintAuthority: payer,
-      updateAuthority: payer,
-    })
   );
 
   // 6. Create Associated Token Account and Mint Supply (if supply > 0)
