@@ -13,7 +13,7 @@ import AuthGuard from '@/app/components/AuthGuard';
 import { useNetwork } from '@/app/providers/NetworkProvider';
 import { useToast } from '@/app/components/Toast';
 import { uploadImage, uploadMetadata } from '@/app/lib/pinata';
-import { createMemeCoin } from '@/app/lib/createToken';
+import { createMintTransaction, createMetadataTransaction } from '@/app/lib/createToken';
 import { formatNumber } from '@/app/lib/solana';
 
 const WIZARD_STEPS = ['Connect Wallet', 'Token Details', 'Review & Launch'];
@@ -86,7 +86,7 @@ export default function CreatePage() {
       });
       token.setMetadataResult(metaResult.uri);
 
-      // Step 3: Build & send transaction
+      // Step 3: Build & send mint transaction
       token.setStatus('building_tx');
 
       const config = {
@@ -101,7 +101,7 @@ export default function CreatePage() {
 
       token.setStatus('awaiting_signature');
 
-      const result = await createMemeCoin(
+      const mintResult = await createMintTransaction(
         connection,
         walletProvider,
         address,
@@ -114,7 +114,27 @@ export default function CreatePage() {
       // Small delay for UX
       await new Promise((r) => setTimeout(r, 1000));
 
-      token.setSuccess(result.mintAddress, result.txSignature);
+      // Step 4: Create Metaplex metadata (second transaction)
+      token.setStatus('creating_metadata');
+      await new Promise((r) => setTimeout(r, 500));
+      token.setStatus('awaiting_signature_metadata');
+
+      const metadataResult = await createMetadataTransaction(
+        connection,
+        walletProvider,
+        address,
+        mintResult.mintAddress,
+        config.name,
+        config.symbol,
+        config.uri
+      );
+
+      token.setStatus('confirming_metadata');
+
+      // Small delay for UX
+      await new Promise((r) => setTimeout(r, 1000));
+
+      token.setSuccess(mintResult.mintAddress, mintResult.txSignature);
 
       // Record token in D1 for My Tokens / social features
       try {
@@ -124,7 +144,7 @@ export default function CreatePage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${savedToken}` },
             body: JSON.stringify({
-              mint_address: result.mintAddress,
+              mint_address: mintResult.mintAddress,
               name: token.name,
               symbol: token.symbol.toUpperCase(),
               image: imageResult?.url || '',
@@ -139,7 +159,7 @@ export default function CreatePage() {
       try {
         const history = JSON.parse(localStorage.getItem('mememint_tokens') || '[]');
         history.unshift({
-          mint: result.mintAddress,
+          mint: mintResult.mintAddress,
           name: token.name,
           symbol: token.symbol.toUpperCase(),
           image: imageResult.url,
@@ -150,7 +170,7 @@ export default function CreatePage() {
       } catch { /* ignore localStorage errors */ }
 
       // Redirect to success
-      window.location.href = `/success?mint=${result.mintAddress}&tx=${result.txSignature}&network=${network}`;
+      window.location.href = `/success?mint=${mintResult.mintAddress}&tx=${mintResult.txSignature}&network=${network}`;
 
     } catch (err) {
       console.error('Token creation error:', err);

@@ -3,9 +3,11 @@
 const STEPS = [
   { label: 'Uploading Image' },
   { label: 'Uploading Metadata' },
-  { label: 'Building Transaction' },
-  { label: 'Sign in Wallet' },
-  { label: 'Confirming' },
+  { label: 'Creating Mint' },
+  { label: 'Signing Transaction' },
+  { label: 'Confirming Mint' },
+  { label: 'Adding Metadata' },
+  { label: 'Confirming Metadata' },
 ];
 
 const STATUS_TO_STEP = {
@@ -14,6 +16,9 @@ const STATUS_TO_STEP = {
   building_tx: 2,
   awaiting_signature: 3,
   confirming: 4,
+  creating_metadata: 5,
+  awaiting_signature_metadata: 6,
+  confirming_metadata: 6,
 };
 
 export default function ProgressOverlay({ status, error, onRetry, onCancel }) {
@@ -76,7 +81,7 @@ export default function ProgressOverlay({ status, error, onRetry, onCancel }) {
               ))}
             </div>
 
-            {status === 'awaiting_signature' && (
+            {(status === 'awaiting_signature' || status === 'awaiting_signature_metadata') && (
               <div className="progress-wallet-hint animate-fade-in">
                 Check your wallet for a signature request
               </div>
@@ -149,21 +154,11 @@ export default function ProgressOverlay({ status, error, onRetry, onCancel }) {
           flex-shrink: 0;
         }
 
-        .progress-check {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
         .progress-dot {
           width: 8px;
           height: 8px;
           border-radius: var(--radius-full);
           background: var(--hairline);
-        }
-
-        .progress-item-icon {
-          display: none;
         }
 
         .progress-item-label {

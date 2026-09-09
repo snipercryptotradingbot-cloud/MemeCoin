@@ -6,7 +6,7 @@ const TokenContext = createContext(null);
 
 const INITIAL_STATE = {
   // Status
-  status: 'idle', // idle | uploading_image | uploading_metadata | building_tx | awaiting_signature | confirming | success | error
+  status: 'idle', // idle | uploading_image | uploading_metadata | building_tx | awaiting_signature | confirming | creating_metadata | awaiting_signature_metadata | confirming_metadata | success | error
   error: null,
 
   // Token Config

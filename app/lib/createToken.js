@@ -35,30 +35,29 @@ function createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer
     return Buffer.concat([len, buf]);
   }
 
-  // u8 discriminator = 33 for CreateMetadataAccountV3
   const discriminator = Buffer.from([33]);
 
   const dataV2 = Buffer.concat([
     borshString(name),
     borshString(symbol),
     borshString(uri),
-    Buffer.from([0, 0]), // sellerFeeBasisPoints: u16 = 0
-    Buffer.from([0]),    // creators: Option = None
-    Buffer.from([0]),    // collection: Option = None
-    Buffer.from([0]),    // uses: Option = None
+    Buffer.from([0, 0]),
+    Buffer.from([0]),
+    Buffer.from([0]),
+    Buffer.from([0]),
   ]);
 
-  const isMutable = Buffer.from([1]); // true
-  const collectionDetails = Buffer.from([0]); // Option = None
+  const isMutable = Buffer.from([1]);
+  const collectionDetails = Buffer.from([0]);
 
   const data = Buffer.concat([discriminator, dataV2, isMutable, collectionDetails]);
 
   const keys = [
     { pubkey: metadataPda, isSigner: false, isWritable: true },
     { pubkey: mint, isSigner: false, isWritable: false },
-    { pubkey: payer, isSigner: true, isWritable: true },  // mintAuthority
-    { pubkey: payer, isSigner: true, isWritable: true },  // payer
-    { pubkey: payer, isSigner: true, isWritable: true },  // updateAuthority
+    { pubkey: payer, isSigner: true, isWritable: true },
+    { pubkey: payer, isSigner: true, isWritable: true },
+    { pubkey: payer, isSigner: true, isWritable: true },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
   ];
@@ -71,9 +70,10 @@ function createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer
 }
 
 /**
- * Create a new SPL Token (Token-2022) with Metaplex on-chain metadata.
+ * Transaction 1: Create Token-2022 mint, ATA, mint supply, revoke authorities.
+ * This is a simple transaction that simulates and sends without issues.
  */
-export async function createMemeCoin(connection, walletProvider, walletAddress, config, treasuryAddress) {
+export async function createMintTransaction(connection, walletProvider, walletAddress, config, treasuryAddress) {
   const payer = new PublicKey(walletAddress);
   const mintKeypair = Keypair.generate();
   const mint = mintKeypair.publicKey;
@@ -82,7 +82,6 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
 
   const transaction = new Transaction();
 
-  // 1. Platform fee transfer
   if (treasuryAddress) {
     const platformFeeLamports = Math.floor(
       parseFloat(process.env.NEXT_PUBLIC_PLATFORM_FEE_SOL || '0.1') * LAMPORTS_PER_SOL
@@ -99,7 +98,6 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     }
   }
 
-  // 2. Create the mint account (bare 82 bytes, Token-2022)
   transaction.add(
     SystemProgram.createAccount({
       fromPubkey: payer,
@@ -110,7 +108,6 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     })
   );
 
-  // 3. Initialize the Mint
   transaction.add(
     createInitializeMint2Instruction(
       mint,
@@ -121,18 +118,6 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     )
   );
 
-  // 4. Create Metaplex on-chain metadata
-  transaction.add(
-    createCreateMetadataAccountV3Instruction(
-      mint,
-      config.name,
-      config.symbol,
-      config.uri,
-      payer
-    )
-  );
-
-  // 5. Create ATA and mint supply
   const supply = BigInt(config.supply) * BigInt(10 ** config.decimals);
   if (supply > 0n) {
     const ata = getAssociatedTokenAddressSync(mint, payer, false, TOKEN_2022_PROGRAM_ID);
@@ -146,14 +131,12 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     );
   }
 
-  // 6. Revoke Mint Authority
   if (config.revokeMintAuthority) {
     transaction.add(
       createSetAuthorityInstruction(mint, payer, AuthorityType.MintTokens, null, [], TOKEN_2022_PROGRAM_ID)
     );
   }
 
-  // 7. Revoke Freeze Authority
   if (config.revokeFreezeAuthority) {
     transaction.add(
       createSetAuthorityInstruction(mint, payer, AuthorityType.FreezeAccount, null, [], TOKEN_2022_PROGRAM_ID)
@@ -166,11 +149,36 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
 
   transaction.partialSign(mintKeypair);
 
+  const txSignature = await walletProvider.sendTransaction(transaction, connection);
+
+  await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
+
+  return { mintAddress: mint.toBase58(), txSignature };
+}
+
+/**
+ * Transaction 2: Create Metaplex on-chain metadata for the mint.
+ * Uses skipPreflight because the Metaplex instruction causes Phantom simulation failures.
+ */
+export async function createMetadataTransaction(connection, walletProvider, walletAddress, mintAddress, name, symbol, uri) {
+  const payer = new PublicKey(walletAddress);
+  const mint = new PublicKey(mintAddress);
+
+  const transaction = new Transaction();
+
+  transaction.add(
+    createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer)
+  );
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = payer;
+
   const txSignature = await walletProvider.sendTransaction(transaction, connection, {
     skipPreflight: true,
   });
 
   await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
 
-  return { mintAddress: mint.toBase58(), txSignature };
+  return { txSignature };
 }
