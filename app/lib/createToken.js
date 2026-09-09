@@ -14,8 +14,6 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_2022_PROGRAM_ID,
   AuthorityType,
-  LENGTH_SIZE,
-  TYPE_SIZE,
 } from '@solana/spl-token';
 import {
   createInitializeInstruction,
@@ -25,27 +23,12 @@ import {
 /**
  * Create a new SPL Token (Token-2022) with on-chain metadata.
  * Includes a platform fee transfer in the same atomic transaction.
- *
- * @param {Connection} connection - Solana connection
- * @param {object} walletProvider - Reown wallet provider with sendTransaction
- * @param {string} walletAddress - Connected wallet public key string
- * @param {object} config - Token configuration
- * @param {string} config.name - Token name
- * @param {string} config.symbol - Token symbol
- * @param {string} config.uri - Metadata URI (IPFS)
- * @param {number} config.decimals - Token decimals (0-9)
- * @param {string} config.supply - Total supply as string
- * @param {boolean} config.revokeMintAuthority - Whether to revoke mint authority
- * @param {boolean} config.revokeFreezeAuthority - Whether to revoke freeze authority
- * @param {string} treasuryAddress - Treasury wallet for platform fee
- * @returns {{ mintAddress: string, txSignature: string }}
  */
 export async function createMemeCoin(connection, walletProvider, walletAddress, config, treasuryAddress) {
   const payer = new PublicKey(walletAddress);
   const mintKeypair = Keypair.generate();
   const mint = mintKeypair.publicKey;
 
-  // Build the on-chain metadata
   const tokenMetadata = {
     mint: mint,
     name: config.name,
@@ -54,20 +37,22 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     additionalMetadata: [],
   };
 
-  // Calculate the space needed for the mint account (base mint only, no extensions)
-  const totalLen = 82;
+  // Manual space: base mint (82) + MetadataPointer ext (12) + TokenMetadata ext header (3) + packed metadata
+  const BASE_MINT_SIZE = 82;
+  const METADATA_POINTER_EXT_SIZE = 12;
+  const TOKEN_METADATA_EXT_HEADER_SIZE = 3;
+  const packedMetadata = pack(tokenMetadata);
+  const totalLen = BASE_MINT_SIZE + METADATA_POINTER_EXT_SIZE + TOKEN_METADATA_EXT_HEADER_SIZE + packedMetadata.length;
 
-  // Calculate rent
   const lamports = await connection.getMinimumBalanceForRentExemption(totalLen);
 
-  // Build the transaction
   const transaction = new Transaction();
 
-  // 1. Platform fee transfer (if treasury address is set)
+  // 1. Platform fee transfer
   if (treasuryAddress) {
     const platformFeeLamports = Math.floor(
       parseFloat(process.env.NEXT_PUBLIC_PLATFORM_FEE_SOL || '0.1') * LAMPORTS_PER_SOL
-    ) - lamports - 5000; // Subtract rent and tx fee from total 0.1 SOL
+    ) - lamports - 5000;
 
     if (platformFeeLamports > 0) {
       transaction.add(
@@ -80,7 +65,7 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     }
   }
 
-  // 2. Create the mint account
+  // 2. Create the mint account (with space for extensions)
   transaction.add(
     SystemProgram.createAccount({
       fromPubkey: payer,
@@ -91,100 +76,78 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     })
   );
 
-  // 3. Initialize the Mint
+  // 3. Initialize Mint2 FIRST (writes base mint data at bytes 0-81)
   transaction.add(
     createInitializeMint2Instruction(
       mint,
       config.decimals,
       payer,
-      payer, // freeze authority (will be revoked if configured)
+      payer,
       TOKEN_2022_PROGRAM_ID
     )
   );
 
-  // 6. Create Associated Token Account and Mint Supply (if supply > 0)
-  const supply = BigInt(config.supply) * BigInt(10 ** config.decimals);
-  if (supply > 0n) {
-    const ata = getAssociatedTokenAddressSync(
+  // 4. Initialize Metadata Pointer (writes to extension area AFTER mint init)
+  transaction.add(
+    createInitializeMetadataPointerInstruction(
       mint,
       payer,
-      false,
+      mint,
       TOKEN_2022_PROGRAM_ID
+    )
+  );
+
+  // 5. Initialize token metadata on the mint account
+  transaction.add(
+    createInitializeInstruction({
+      programId: TOKEN_2022_PROGRAM_ID,
+      mint: mint,
+      metadata: mint,
+      name: tokenMetadata.name,
+      symbol: tokenMetadata.symbol,
+      uri: tokenMetadata.uri,
+      mintAuthority: payer,
+      updateAuthority: payer,
+    })
+  );
+
+  // 6. Create ATA and mint supply
+  const supply = BigInt(config.supply) * BigInt(10 ** config.decimals);
+  if (supply > 0n) {
+    const ata = getAssociatedTokenAddressSync(mint, payer, false, TOKEN_2022_PROGRAM_ID);
+
+    transaction.add(
+      createAssociatedTokenAccountInstruction(payer, ata, payer, mint, TOKEN_2022_PROGRAM_ID)
     );
 
     transaction.add(
-      createAssociatedTokenAccountInstruction(
-        payer,
-        ata,
-        payer,
-        mint,
-        TOKEN_2022_PROGRAM_ID
-      )
-    );
-
-    transaction.add(
-      createMintToInstruction(
-        mint,
-        ata,
-        payer,
-        supply,
-        [],
-        TOKEN_2022_PROGRAM_ID
-      )
+      createMintToInstruction(mint, ata, payer, supply, [], TOKEN_2022_PROGRAM_ID)
     );
   }
 
-  // 7. Revoke Mint Authority (makes supply immutable)
+  // 7. Revoke Mint Authority
   if (config.revokeMintAuthority) {
     transaction.add(
-      createSetAuthorityInstruction(
-        mint,
-        payer,
-        AuthorityType.MintTokens,
-        null,
-        [],
-        TOKEN_2022_PROGRAM_ID
-      )
+      createSetAuthorityInstruction(mint, payer, AuthorityType.MintTokens, null, [], TOKEN_2022_PROGRAM_ID)
     );
   }
 
   // 8. Revoke Freeze Authority
   if (config.revokeFreezeAuthority) {
     transaction.add(
-      createSetAuthorityInstruction(
-        mint,
-        payer,
-        AuthorityType.FreezeAccount,
-        null,
-        [],
-        TOKEN_2022_PROGRAM_ID
-      )
+      createSetAuthorityInstruction(mint, payer, AuthorityType.FreezeAccount, null, [], TOKEN_2022_PROGRAM_ID)
     );
   }
 
-  // Set recent blockhash and fee payer
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = payer;
 
-  // Partially sign with the mint keypair
   transaction.partialSign(mintKeypair);
 
-  // Send the transaction via the wallet provider
   const txSignature = await walletProvider.sendTransaction(transaction, connection);
 
-  // Wait for confirmation
-  await connection.confirmTransaction(
-    {
-      signature: txSignature,
-      blockhash,
-      lastValidBlockHeight,
-    },
-    'confirmed'
-  );
+  await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
 
-  return {
-    mintAddress: mint.toBase58(),
-    txSignature,
-  };
+  return { mintAddress: mint.toBase58(), txSignature };
 }
