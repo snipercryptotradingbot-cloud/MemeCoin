@@ -38,7 +38,7 @@ export async function GET(request) {
       const network = searchParams.get('network') || 'devnet';
       const connection = getConnection(network);
 
-      const curveState = await getBondingCurveState(connection, mintAddress);
+      const curveState = await getBondingCurveState(connection, mintAddress, network);
       if (!curveState) {
         return NextResponse.json({ error: 'Bonding curve not found' }, { status: 404 });
       }
@@ -52,7 +52,7 @@ export async function GET(request) {
         dbPool = result;
       }
 
-      const summary = await getPoolSummary(connection, mintAddress, dbPool);
+      const summary = await getPoolSummary(connection, mintAddress, dbPool, network);
       return NextResponse.json(summary);
     }
 
@@ -177,7 +177,8 @@ export async function POST(request) {
           parseFloat(initial_sol),
           parseInt(initial_tokens),
           fee_basis_points || 100,
-          parseFloat(sol_target || '85')
+          parseFloat(sol_target || '85'),
+          network
         );
 
         // Create pool record in D1
@@ -225,7 +226,8 @@ export async function POST(request) {
           wallet,
           mint_address,
           parseFloat(sol_amount),
-          parseInt(min_tokens_out || '0')
+          parseInt(min_tokens_out || '0'),
+          network
         );
         break;
       }
@@ -241,23 +243,24 @@ export async function POST(request) {
           wallet,
           mint_address,
           parseInt(token_amount),
-          parseFloat(min_sol_out || '0')
+          parseFloat(min_sol_out || '0'),
+          network
         );
         break;
       }
 
       case 'pause': {
-        result = await buildPauseCurveTx(connection, wallet, mint_address);
+        result = await buildPauseCurveTx(connection, wallet, mint_address, network);
         break;
       }
 
       case 'close': {
-        result = await buildCloseCurveTx(connection, wallet, mint_address);
+        result = await buildCloseCurveTx(connection, wallet, mint_address, network);
         break;
       }
 
       case 'migrate': {
-        result = await buildMigrateToDexTx(connection, wallet, mint_address);
+        result = await buildMigrateToDexTx(connection, wallet, mint_address, network);
         break;
       }
 

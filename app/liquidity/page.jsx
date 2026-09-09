@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAppKitAccount, useAppKitProvider, useAppKitNetwork } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { useAppKitConnection } from '@reown/appkit-adapter-solana/react';
 import CopyButton from '@/app/components/CopyButton';
 import NetworkBadge from '@/app/components/NetworkBadge';
 import AuthGuard from '@/app/components/AuthGuard';
+import { useNetwork } from '@/app/providers/NetworkProvider';
 import { shortenAddress } from '@/app/lib/solana';
 import {
   calculateTokensOut,
@@ -50,9 +51,7 @@ export default function LiquidityPage() {
   const { address, isConnected } = useAppKitAccount();
   const { connection } = useAppKitConnection();
   const { walletProvider } = useAppKitProvider('solana');
-  const { caipNetwork } = useAppKitNetwork();
-
-  const network = caipNetwork?.name?.toLowerCase()?.includes('mainnet') ? 'mainnet' : 'devnet';
+  const { network } = useNetwork();
 
   // Pools list
   const [pools, setPools] = useState([]);

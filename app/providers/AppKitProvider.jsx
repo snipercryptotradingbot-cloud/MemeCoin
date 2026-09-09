@@ -4,6 +4,7 @@ import { createAppKit } from '@reown/appkit/react';
 import { SolanaAdapter } from '@reown/appkit-adapter-solana/react';
 import { solana, solanaDevnet } from '@reown/appkit/networks';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { getDefaultNetwork } from '@/app/lib/solana';
 
 const solanaAdapter = new SolanaAdapter({
   wallets: [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
@@ -19,9 +20,11 @@ const metadata = {
 };
 
 if (projectId) {
+  const defaultNetwork = getDefaultNetwork() === 'mainnet' ? solana : solanaDevnet;
   createAppKit({
     adapters: [solanaAdapter],
     networks: [solana, solanaDevnet],
+    defaultNetwork,
     projectId,
     metadata,
     features: {

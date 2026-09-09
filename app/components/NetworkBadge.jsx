@@ -1,6 +1,10 @@
 'use client';
 
-export default function NetworkBadge({ network = 'devnet' }) {
+import { useNetwork } from '@/app/providers/NetworkProvider';
+
+export default function NetworkBadge({ network: networkProp }) {
+  const { network: contextNetwork } = useNetwork();
+  const network = networkProp || contextNetwork;
   const isMainnet = network === 'mainnet' || network === 'mainnet-beta';
 
   return (

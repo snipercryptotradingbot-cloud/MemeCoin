@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
+import { useNetwork } from '@/app/providers/NetworkProvider';
 import AuthGuard from '@/app/components/AuthGuard';
 import Link from 'next/link';
 
 const TABS = [
   { id: 'profile', label: 'Profile & Handle' },
+  { id: 'network', label: 'Network' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'security', label: 'Security' },
   { id: 'wallet', label: 'Wallet' },
@@ -16,6 +18,7 @@ const TABS = [
 
 function SettingsContent() {
   const { user, token, updateProfile, changePassword, logout } = useAuth();
+  const { network: currentNetwork, setNetwork } = useNetwork();
   const [activeTab, setActiveTab] = useState('profile');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -439,6 +442,40 @@ function SettingsContent() {
                   ))}
                 </div>
               )}
+            </section>
+          )}
+
+          {activeTab === 'network' && (
+            <section className="settings-section">
+              <h2>Network</h2>
+              <p className="section-desc">Switch between Solana devnet and mainnet. This affects token creation, trading, and all on-chain operations.</p>
+
+              <div className="network-switcher">
+                <button
+                  className={`network-option ${currentNetwork === 'devnet' ? 'active' : ''}`}
+                  onClick={() => setNetwork('devnet')}
+                >
+                  <span className="network-dot devnet" />
+                  <div>
+                    <strong>Devnet</strong>
+                    <span className="network-hint">For testing — no real funds at risk</span>
+                  </div>
+                </button>
+                <button
+                  className={`network-option ${currentNetwork === 'mainnet' ? 'active' : ''}`}
+                  onClick={() => setNetwork('mainnet')}
+                >
+                  <span className="network-dot mainnet" />
+                  <div>
+                    <strong>Mainnet</strong>
+                    <span className="network-hint">Real SOL — use with caution</span>
+                  </div>
+                </button>
+              </div>
+
+              <p className="field-hint" style={{ marginTop: 'var(--space-4)' }}>
+                Current: <strong>{currentNetwork === 'mainnet' ? 'Mainnet' : 'Devnet'}</strong> — your connected wallet will be switched to match.
+              </p>
             </section>
           )}
         </main>
@@ -953,6 +990,60 @@ function SettingsContent() {
         .referral-amount { color: var(--brand-mint-deep); font-weight: 600; font-family: var(--font-mono); font-size: var(--text-xs); }
         .referral-time { color: var(--muted); font-size: var(--text-xs); }
         .input-hint { font-size: var(--text-sm); color: var(--muted); }
+
+        .network-switcher {
+          display: flex;
+          gap: var(--space-3);
+          margin-top: var(--space-4);
+        }
+
+        .network-option {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: var(--space-3);
+          padding: var(--space-4) var(--space-5);
+          background: var(--bg-canvas);
+          border: 2px solid var(--hairline);
+          border-radius: var(--radius-lg);
+          cursor: pointer;
+          transition: all var(--transition-fast);
+          text-align: left;
+          font-family: var(--font-sans);
+        }
+
+        .network-option:hover {
+          border-color: #d4d4d4;
+        }
+
+        .network-option.active {
+          border-color: var(--brand-mint);
+          background: rgba(60, 255, 208, 0.04);
+        }
+
+        .network-option strong {
+          display: block;
+          font-size: var(--text-sm);
+          font-weight: 700;
+          color: var(--ink);
+          margin-bottom: 2px;
+        }
+
+        .network-hint {
+          display: block;
+          font-size: var(--text-xs);
+          color: var(--muted);
+        }
+
+        .network-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .network-dot.devnet { background: #22c55e; }
+        .network-dot.mainnet { background: #f59e0b; }
 
         @media (max-width: 768px) {
           .settings-layout {

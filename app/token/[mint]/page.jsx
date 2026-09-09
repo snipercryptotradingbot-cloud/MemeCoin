@@ -9,12 +9,13 @@ import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { useAppKitConnection } from '@reown/appkit-adapter-solana/react';
 import { revokeMintAuthority, revokeFreezeAuthority, REVOKE_FEE_SOL } from '@/app/lib/revokeAuthority';
 import { useAuth } from '@/app/providers/AuthProvider';
+import { useNetwork } from '@/app/providers/NetworkProvider';
 
 export default function TokenDetailPage({ params }) {
   const mint = typeof params?.mint === 'string' ? params.mint : decodeURIComponent((typeof window !== 'undefined' ? window.location.pathname : '') || '').split('/token/')[1] || '';
 
   const [token, setToken] = useState(null);
-  const [network, setNetwork] = useState('devnet');
+  const { network } = useNetwork();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 

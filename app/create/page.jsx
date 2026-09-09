@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@reown/appkit/react';
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import { useAppKitConnection } from '@reown/appkit-adapter-solana/react';
 import StepIndicator from '@/app/components/StepIndicator';
 import ImageUploader from '@/app/components/ImageUploader';
@@ -10,6 +10,7 @@ import ProgressOverlay from '@/app/components/ProgressOverlay';
 import NetworkBadge from '@/app/components/NetworkBadge';
 import { useToken } from '@/app/providers/TokenProvider';
 import AuthGuard from '@/app/components/AuthGuard';
+import { useNetwork } from '@/app/providers/NetworkProvider';
 import { useToast } from '@/app/components/Toast';
 import { uploadImage, uploadMetadata } from '@/app/lib/pinata';
 import { createMemeCoin } from '@/app/lib/createToken';
@@ -21,7 +22,7 @@ export default function CreatePage() {
   const { address, isConnected } = useAppKitAccount();
   const { connection } = useAppKitConnection();
   const { walletProvider } = useAppKitProvider('solana');
-  const { caipNetwork } = useAppKitNetwork();
+  const { network } = useNetwork();
 
   const token = useToken();
   const toast = useToast();
@@ -30,8 +31,6 @@ export default function CreatePage() {
   const [imageError, setImageError] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [formErrors, setFormErrors] = useState({});
-
-  const network = caipNetwork?.name?.toLowerCase()?.includes('mainnet') ? 'mainnet' : 'devnet';
 
   // Auto-advance step 0 when connected
   const currentStep = isConnected && wizardStep === 0 ? 1 : wizardStep;

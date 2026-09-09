@@ -1,6 +1,7 @@
 import './styles/globals.css';
 import './styles/components.css';
 import { AppKitProvider } from './providers/AppKitProvider';
+import { NetworkProvider } from './providers/NetworkProvider';
 import { TokenProvider } from './providers/TokenProvider';
 import { ToastProvider } from './components/Toast';
 import Navbar from './components/Navbar';
@@ -27,15 +28,17 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <AppKitProvider>
-          <ToastProvider>
-            <TokenProvider>
-              <Navbar />
-              <main style={{ minHeight: '100vh' }}>
-                {children}
-              </main>
-              <Footer />
-            </TokenProvider>
-          </ToastProvider>
+          <NetworkProvider>
+            <ToastProvider>
+              <TokenProvider>
+                <Navbar />
+                <main style={{ minHeight: '100vh' }}>
+                  {children}
+                </main>
+                <Footer />
+              </TokenProvider>
+            </ToastProvider>
+          </NetworkProvider>
         </AppKitProvider>
       </body>
     </html>

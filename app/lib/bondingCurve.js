@@ -9,6 +9,7 @@ import {
 } from '@solana/spl-token';
 import {
   BONDING_CURVE_PROGRAM_ID,
+  getProgramId,
   CURVE_SEED,
   SOL_VAULT_SEED,
   DEFAULT_FEE_BASIS_POINTS,
@@ -30,13 +31,15 @@ export async function buildInitializeCurveTx(
   initialSol,
   initialTokens,
   feeBasisPoints = DEFAULT_FEE_BASIS_POINTS,
-  solTarget = DEFAULT_SOL_TARGET_SOL
+  solTarget = DEFAULT_SOL_TARGET_SOL,
+  network = 'devnet'
 ) {
   const payer = new PublicKey(walletAddress);
   const mint = new PublicKey(mintAddress);
+  const programId = getProgramId(network);
 
-  const [curvePda] = getCurvePda(mint);
-  const [solVaultPda] = getSolVaultPda(curvePda);
+  const [curvePda] = getCurvePda(mint, network);
+  const [solVaultPda] = getSolVaultPda(curvePda, network);
 
   const tokenVault = getAssociatedTokenAddressSync(
     mint,
@@ -95,7 +98,7 @@ export async function buildInitializeCurveTx(
 
   transaction.add({
     keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
+    programId,
     data,
   });
 
@@ -114,13 +117,15 @@ export async function buildBuyTokensTx(
   walletAddress,
   mintAddress,
   solAmount,
-  minTokensOut = 0
+  minTokensOut = 0,
+  network = 'devnet'
 ) {
   const payer = new PublicKey(walletAddress);
   const mint = new PublicKey(mintAddress);
+  const programId = getProgramId(network);
 
-  const [curvePda] = getCurvePda(mint);
-  const [solVaultPda] = getSolVaultPda(curvePda);
+  const [curvePda] = getCurvePda(mint, network);
+  const [solVaultPda] = getSolVaultPda(curvePda, network);
 
   const tokenVault = getAssociatedTokenAddressSync(
     mint,
@@ -138,7 +143,7 @@ export async function buildBuyTokensTx(
 
   const solLamports = solToLamports(solAmount);
 
-  const curveState = await getBondingCurveState(connection, mintAddress);
+  const curveState = await getBondingCurveState(connection, mintAddress, network);
   if (!curveState) throw new Error('Bonding curve not found for mint');
   const platformWallet = new PublicKey(curveState.platformWallet);
 
@@ -165,7 +170,7 @@ export async function buildBuyTokensTx(
 
   transaction.add({
     keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
+    programId,
     data,
   });
 
@@ -184,13 +189,15 @@ export async function buildSellTokensTx(
   walletAddress,
   mintAddress,
   tokenAmount,
-  minSolOut = 0
+  minSolOut = 0,
+  network = 'devnet'
 ) {
   const payer = new PublicKey(walletAddress);
   const mint = new PublicKey(mintAddress);
+  const programId = getProgramId(network);
 
-  const [curvePda] = getCurvePda(mint);
-  const [solVaultPda] = getSolVaultPda(curvePda);
+  const [curvePda] = getCurvePda(mint, network);
+  const [solVaultPda] = getSolVaultPda(curvePda, network);
 
   const tokenVault = getAssociatedTokenAddressSync(
     mint,
@@ -206,7 +213,7 @@ export async function buildSellTokensTx(
     TOKEN_2022_PROGRAM_ID
   );
 
-  const curveState = await getBondingCurveState(connection, mintAddress);
+  const curveState = await getBondingCurveState(connection, mintAddress, network);
   if (!curveState) throw new Error('Bonding curve not found for mint');
   const platformWallet = new PublicKey(curveState.platformWallet);
 
@@ -233,7 +240,7 @@ export async function buildSellTokensTx(
 
   transaction.add({
     keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
+    programId,
     data,
   });
 
@@ -252,13 +259,15 @@ export async function buildSellTokensTx(
 export async function buildMigrateToDexTx(
   connection,
   walletAddress,
-  mintAddress
+  mintAddress,
+  network = 'devnet'
 ) {
   const payer = new PublicKey(walletAddress);
   const mint = new PublicKey(mintAddress);
+  const programId = getProgramId(network);
 
-  const [curvePda] = getCurvePda(mint);
-  const [solVaultPda] = getSolVaultPda(curvePda);
+  const [curvePda] = getCurvePda(mint, network);
+  const [solVaultPda] = getSolVaultPda(curvePda, network);
 
   const tokenVault = getAssociatedTokenAddressSync(
     mint,
@@ -293,7 +302,7 @@ export async function buildMigrateToDexTx(
 
   transaction.add({
     keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
+    programId,
     data,
   });
 
@@ -307,10 +316,11 @@ export async function buildMigrateToDexTx(
 /**
  * Build a pause_curve instruction.
  */
-export async function buildPauseCurveTx(connection, walletAddress, mintAddress) {
+export async function buildPauseCurveTx(connection, walletAddress, mintAddress, network = 'devnet') {
   const payer = new PublicKey(walletAddress);
   const mint = new PublicKey(mintAddress);
-  const [curvePda] = getCurvePda(mint);
+  const programId = getProgramId(network);
+  const [curvePda] = getCurvePda(mint, network);
 
   const transaction = new Transaction();
 
@@ -326,7 +336,7 @@ export async function buildPauseCurveTx(connection, walletAddress, mintAddress) 
 
   transaction.add({
     keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
+    programId,
     data,
   });
 
@@ -340,10 +350,11 @@ export async function buildPauseCurveTx(connection, walletAddress, mintAddress) 
 /**
  * Build a close_curve instruction.
  */
-export async function buildCloseCurveTx(connection, walletAddress, mintAddress) {
+export async function buildCloseCurveTx(connection, walletAddress, mintAddress, network = 'devnet') {
   const payer = new PublicKey(walletAddress);
   const mint = new PublicKey(mintAddress);
-  const [curvePda] = getCurvePda(mint);
+  const programId = getProgramId(network);
+  const [curvePda] = getCurvePda(mint, network);
 
   const transaction = new Transaction();
 
@@ -359,7 +370,7 @@ export async function buildCloseCurveTx(connection, walletAddress, mintAddress) 
 
   transaction.add({
     keys,
-    programId: BONDING_CURVE_PROGRAM_ID,
+    programId,
     data,
   });
 

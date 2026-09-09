@@ -1,9 +1,17 @@
 import { PublicKey } from '@solana/web3.js';
 
-// Program ID - replace with actual deployed program ID
-export const BONDING_CURVE_PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_BONDING_CURVE_PROGRAM_ID || '3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6'
-);
+// Per-network program IDs
+const PROGRAM_IDS = {
+  devnet: process.env.NEXT_PUBLIC_BONDING_CURVE_PROGRAM_ID || '3MQL5zPvAZvC8ZWkLc5qkGy3Cy31KFwxA8zngNQfoTu6',
+  mainnet: process.env.NEXT_PUBLIC_MAINNET_BONDING_CURVE_PROGRAM_ID || '6LAcMQeg8TyvMcveNMFmwUTkLyHa49kfzoTm18TjD151',
+};
+
+export function getProgramId(network = 'devnet') {
+  return new PublicKey(PROGRAM_IDS[network] || PROGRAM_IDS.devnet);
+}
+
+// Legacy export for backwards compatibility (devnet)
+export const BONDING_CURVE_PROGRAM_ID = getProgramId('devnet');
 
 // PDA seed prefixes (must match the on-chain program)
 export const CURVE_SEED = Buffer.from('bonding_curve');
@@ -30,22 +38,22 @@ export const TREASURY_WALLET = process.env.NEXT_PUBLIC_TREASURY_WALLET || proces
 /**
  * Derive the curve PDA address
  */
-export function getCurvePda(mintAddress) {
+export function getCurvePda(mintAddress, network = 'devnet') {
   const mint = typeof mintAddress === 'string' ? new PublicKey(mintAddress) : mintAddress;
   return PublicKey.findProgramAddressSync(
     [CURVE_SEED, mint.toBuffer()],
-    BONDING_CURVE_PROGRAM_ID
+    getProgramId(network)
   );
 }
 
 /**
  * Derive the SOL vault PDA address
  */
-export function getSolVaultPda(curveAddress) {
+export function getSolVaultPda(curveAddress, network = 'devnet') {
   const curve = typeof curveAddress === 'string' ? new PublicKey(curveAddress) : curveAddress;
   return PublicKey.findProgramAddressSync(
     [SOL_VAULT_SEED, curve.toBuffer()],
-    BONDING_CURVE_PROGRAM_ID
+    getProgramId(network)
   );
 }
 

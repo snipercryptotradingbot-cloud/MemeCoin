@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import CopyButton from '@/app/components/CopyButton';
 import NetworkBadge from '@/app/components/NetworkBadge';
+import { useNetwork } from '@/app/providers/NetworkProvider';
 import { shortenAddress, getExplorerUrl, formatNumber } from '@/app/lib/solana';
 
 // Seed realistic trending/mock tokens for discovery
@@ -91,6 +92,7 @@ const TRENDING_TOKENS = [
 function ExploreContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { network: contextNetwork } = useNetwork();
   
   const refParam = searchParams.get('ref');
 
@@ -101,7 +103,7 @@ function ExploreContent() {
   }, [refParam]);
   
   const [mintInput, setMintInput] = useState(searchParams.get('mint') || '');
-  const [network, setNetwork] = useState(searchParams.get('network') || 'devnet');
+  const [network, setNetwork] = useState(searchParams.get('network') || contextNetwork);
   const [tokenInfo, setTokenInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

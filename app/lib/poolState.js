@@ -1,6 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { getCurvePda, getSolVaultPda, BONDING_CURVE_PROGRAM_ID } from './constants.js';
+import { getCurvePda, getSolVaultPda, getProgramId, BONDING_CURVE_PROGRAM_ID } from './constants.js';
 
 // BondingCurve: discriminator(8) + creator(32) + mint(32) + curveBump(1) + solVaultBump(1) + status(1)
 //   + solReserves(8) + tokenReserves(8) + initialSolTarget(8) + feeBasisPoints(2)
@@ -47,9 +47,9 @@ function deserializeCurve(data) {
 /**
  * Fetch the on-chain bonding curve state for a given token mint.
  */
-export async function getBondingCurveState(connection, mintAddress) {
+export async function getBondingCurveState(connection, mintAddress, network = 'devnet') {
   const mint = new PublicKey(mintAddress);
-  const [curvePda] = getCurvePda(mint);
+  const [curvePda] = getCurvePda(mint, network);
 
   const accountInfo = await connection.getAccountInfo(curvePda);
   if (!accountInfo) return null;
@@ -57,7 +57,7 @@ export async function getBondingCurveState(connection, mintAddress) {
   const curve = deserializeCurve(accountInfo.data);
 
   // Fetch SOL vault balance
-  const [solVaultPda] = getSolVaultPda(curvePda);
+  const [solVaultPda] = getSolVaultPda(curvePda, network);
   const solVaultInfo = await connection.getAccountInfo(solVaultPda);
   curve.solVaultLamports = solVaultInfo ? solVaultInfo.lamports : 0;
 
@@ -81,8 +81,8 @@ export async function getBondingCurveState(connection, mintAddress) {
 /**
  * Fetch all bonding curves (via getProgramAccounts).
  */
-export async function getAllBondingCurves(connection) {
-  const accounts = await connection.getProgramAccounts(BONDING_CURVE_PROGRAM_ID, {
+export async function getAllBondingCurves(connection, network = 'devnet') {
+  const accounts = await connection.getProgramAccounts(getProgramId(network), {
     commitment: 'confirmed',
   });
 
@@ -97,8 +97,8 @@ export async function getAllBondingCurves(connection) {
 /**
  * Get pool summary for display (combines on-chain + DB data).
  */
-export async function getPoolSummary(connection, mintAddress, dbPool = null) {
-  const curve = await getBondingCurveState(connection, mintAddress);
+export async function getPoolSummary(connection, mintAddress, dbPool = null, network = 'devnet') {
+  const curve = await getBondingCurveState(connection, mintAddress, network);
   if (!curve) return null;
 
   const progress = curve.initialSolTarget > 0
