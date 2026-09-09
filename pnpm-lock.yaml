@@ -11,6 +11,9 @@ importers:
       '@coral-xyz/anchor':
         specifier: ^0.30.1
         version: 0.30.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@metaplex-foundation/mpl-token-metadata':
+        specifier: ^3.4.0
+        version: 3.4.0(@metaplex-foundation/umi@1.5.1)
       '@meteora-ag/dlmm':
         specifier: ^1.9.14
         version: 1.9.14(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(supports-color@10.2.2)(typescript@5.9.3)(utf-8-validate@6.0.6)
@@ -1041,6 +1044,37 @@ packages:
 
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
+
+  '@metaplex-foundation/mpl-token-metadata@3.4.0':
+    resolution: {integrity: sha512-AxBAYCK73JWxY3g9//z/C9krkR0t1orXZDknUPS4+GjwGH2vgPfsk04yfZ31Htka2AdS9YE/3wH7sMUBHKn9Rg==}
+    peerDependencies:
+      '@metaplex-foundation/umi': '>= 0.8.2 <= 1'
+
+  '@metaplex-foundation/mpl-toolbox@0.10.0':
+    resolution: {integrity: sha512-84KD1L5cFyw5xnntHwL4uPwfcrkKSiwuDeypiVr92qCUFuF3ZENa2zlFVPu+pQcjTlod2LmEX3MhBmNjRMpdKg==}
+    peerDependencies:
+      '@metaplex-foundation/umi': '>= 0.8.2 <= 1'
+
+  '@metaplex-foundation/umi-options@1.5.1':
+    resolution: {integrity: sha512-ZE6uXgFA3rElFq4gJxZM2diAqZdFqL65bOnAggwdnnei5XXRzFyNF16wYSqlHnPLvG6ohRHWiXww8d2Mb83xFg==}
+
+  '@metaplex-foundation/umi-public-keys@1.5.1':
+    resolution: {integrity: sha512-joTnI1mRtYRfIaTo98uaYRjBPszsdyHuq0vvd6QbSX+MPvu3enkWi+UicuykEc3VXd5tcGdNMiGSx4jgXG6pkw==}
+
+  '@metaplex-foundation/umi-serializers-core@1.5.1':
+    resolution: {integrity: sha512-6nYsbTCLq421x7JT1B3/iNgPpSARj/wL9naoKbOreHrk2ip/4R7vQstVRMl0Gx+Hv2tHnEIbFo3JBtWyC377Qw==}
+
+  '@metaplex-foundation/umi-serializers-encodings@1.5.1':
+    resolution: {integrity: sha512-cVvwWmREE/Pmvjvsd50F18P53HDT0vzZECD6uYWIVzxgwpOiRDFu6r/vGbweomHoWzfTvuU6hiKuKv2KsOoXQA==}
+
+  '@metaplex-foundation/umi-serializers-numbers@1.5.1':
+    resolution: {integrity: sha512-7DVF1VJIdT44Pe6qWKaqGu4YVgE10OeLMYpm7C16SujSBgQGB/I2bh8NBifyH2R3oHhoyfE9qgIKB3dgRazN6A==}
+
+  '@metaplex-foundation/umi-serializers@1.5.1':
+    resolution: {integrity: sha512-scXciBylbJ4iwfxOF1Xx2XiBzoYUD8fSKWTsMal5Rj1hMRDe6b2XZcsBOjio61iAr8aTtFPmKpqxeBdLwmQ0ZQ==}
+
+  '@metaplex-foundation/umi@1.5.1':
+    resolution: {integrity: sha512-ONRv5a0kv+23AMlR8oyFBHnjVg3o3N8pUfFcV4gzbg6OgZf87zHsPWBfED3OTJqx267v1bEn6d6DABXNFq9Z3A==}
 
   '@meteora-ag/dlmm@1.9.14':
     resolution: {integrity: sha512-3xJGBaYgkHWSZ7sjfaMYTuCUE9/FGibIwhoNKSaP3iXX3kZck4b3qrtFwDl/1+JaflTeiZQY4zO25e+u2V/9ug==}
@@ -7467,6 +7501,45 @@ snapshots:
   '@lit/reactive-element@2.1.2':
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
+
+  '@metaplex-foundation/mpl-token-metadata@3.4.0(@metaplex-foundation/umi@1.5.1)':
+    dependencies:
+      '@metaplex-foundation/mpl-toolbox': 0.10.0(@metaplex-foundation/umi@1.5.1)
+      '@metaplex-foundation/umi': 1.5.1
+
+  '@metaplex-foundation/mpl-toolbox@0.10.0(@metaplex-foundation/umi@1.5.1)':
+    dependencies:
+      '@metaplex-foundation/umi': 1.5.1
+
+  '@metaplex-foundation/umi-options@1.5.1': {}
+
+  '@metaplex-foundation/umi-public-keys@1.5.1':
+    dependencies:
+      '@metaplex-foundation/umi-serializers-encodings': 1.5.1
+
+  '@metaplex-foundation/umi-serializers-core@1.5.1': {}
+
+  '@metaplex-foundation/umi-serializers-encodings@1.5.1':
+    dependencies:
+      '@metaplex-foundation/umi-serializers-core': 1.5.1
+
+  '@metaplex-foundation/umi-serializers-numbers@1.5.1':
+    dependencies:
+      '@metaplex-foundation/umi-serializers-core': 1.5.1
+
+  '@metaplex-foundation/umi-serializers@1.5.1':
+    dependencies:
+      '@metaplex-foundation/umi-options': 1.5.1
+      '@metaplex-foundation/umi-public-keys': 1.5.1
+      '@metaplex-foundation/umi-serializers-core': 1.5.1
+      '@metaplex-foundation/umi-serializers-encodings': 1.5.1
+      '@metaplex-foundation/umi-serializers-numbers': 1.5.1
+
+  '@metaplex-foundation/umi@1.5.1':
+    dependencies:
+      '@metaplex-foundation/umi-options': 1.5.1
+      '@metaplex-foundation/umi-public-keys': 1.5.1
+      '@metaplex-foundation/umi-serializers': 1.5.1
 
   '@meteora-ag/dlmm@1.9.14(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(supports-color@10.2.2)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:

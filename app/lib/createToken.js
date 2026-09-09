@@ -4,9 +4,9 @@ import {
   Transaction,
   PublicKey,
   LAMPORTS_PER_SOL,
+  TransactionInstruction,
 } from '@solana/web3.js';
 import {
-  createInitializeMetadataPointerInstruction,
   createInitializeMint2Instruction,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
@@ -15,36 +15,70 @@ import {
   TOKEN_2022_PROGRAM_ID,
   AuthorityType,
 } from '@solana/spl-token';
-import {
-  createInitializeInstruction,
-  pack,
-} from '@solana/spl-token-metadata';
+
+const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
+function getMetadataPda(mint) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('metadata'), METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    METADATA_PROGRAM_ID
+  )[0];
+}
+
+function createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer) {
+  const metadataPda = getMetadataPda(mint);
+
+  // Borsh encode DataV2
+  function borshString(str) {
+    const buf = Buffer.from(str, 'utf8');
+    const len = Buffer.alloc(4);
+    len.writeUInt32LE(buf.length);
+    return Buffer.concat([len, buf]);
+  }
+
+  // Discriminator for CreateMetadataAccountV3: sha256("global:create_metadata_account_v3")[..8]
+  const discriminator = Buffer.from([33, 205, 169, 68, 211, 188, 208, 161]);
+
+  const dataV2 = Buffer.concat([
+    borshString(name),
+    borshString(symbol),
+    borshString(uri),
+    Buffer.from([0, 0]), // sellerFeeBasisPoints: u16 = 0
+    Buffer.from([0]),    // creators: Option = None
+    Buffer.from([0]),    // collection: Option = None
+    Buffer.from([0]),    // uses: Option = None
+  ]);
+
+  const isMutable = Buffer.from([1]); // true
+  const collectionDetails = Buffer.from([0]); // Option = None
+
+  const data = Buffer.concat([discriminator, dataV2, isMutable, collectionDetails]);
+
+  const keys = [
+    { pubkey: metadataPda, isSigner: false, isWritable: true },
+    { pubkey: mint, isSigner: false, isWritable: false },
+    { pubkey: payer, isSigner: true, isWritable: true },
+    { pubkey: payer, isSigner: true, isWritable: true }, // updateAuthority (same as payer)
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
+  ];
+
+  return new TransactionInstruction({
+    keys,
+    programId: METADATA_PROGRAM_ID,
+    data,
+  });
+}
 
 /**
- * Create a new SPL Token (Token-2022) with on-chain metadata.
- * Includes a platform fee transfer in the same atomic transaction.
+ * Create a new SPL Token (Token-2022) with Metaplex on-chain metadata.
  */
 export async function createMemeCoin(connection, walletProvider, walletAddress, config, treasuryAddress) {
   const payer = new PublicKey(walletAddress);
   const mintKeypair = Keypair.generate();
   const mint = mintKeypair.publicKey;
 
-  const tokenMetadata = {
-    mint: mint,
-    name: config.name,
-    symbol: config.symbol,
-    uri: config.uri,
-    additionalMetadata: [],
-  };
-
-  // Manual space: base mint (82) + MetadataPointer ext (12) + TokenMetadata ext header (3) + packed metadata
-  const BASE_MINT_SIZE = 82;
-  const METADATA_POINTER_EXT_SIZE = 12;
-  const TOKEN_METADATA_EXT_HEADER_SIZE = 3;
-  const packedMetadata = pack(tokenMetadata);
-  const totalLen = BASE_MINT_SIZE + METADATA_POINTER_EXT_SIZE + TOKEN_METADATA_EXT_HEADER_SIZE + packedMetadata.length;
-
-  const lamports = await connection.getMinimumBalanceForRentExemption(totalLen);
+  const lamports = await connection.getMinimumBalanceForRentExemption(82);
 
   const transaction = new Transaction();
 
@@ -65,18 +99,18 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     }
   }
 
-  // 2. Create the mint account (with space for extensions)
+  // 2. Create the mint account (bare 82 bytes, Token-2022)
   transaction.add(
     SystemProgram.createAccount({
       fromPubkey: payer,
       newAccountPubkey: mint,
-      space: totalLen,
+      space: 82,
       lamports,
       programId: TOKEN_2022_PROGRAM_ID,
     })
   );
 
-  // 3. Initialize Mint2 FIRST (writes base mint data at bytes 0-81)
+  // 3. Initialize the Mint
   transaction.add(
     createInitializeMint2Instruction(
       mint,
@@ -87,31 +121,18 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     )
   );
 
-  // 4. Initialize Metadata Pointer (writes to extension area AFTER mint init)
+  // 4. Create Metaplex on-chain metadata
   transaction.add(
-    createInitializeMetadataPointerInstruction(
+    createCreateMetadataAccountV3Instruction(
       mint,
-      payer,
-      mint,
-      TOKEN_2022_PROGRAM_ID
+      config.name,
+      config.symbol,
+      config.uri,
+      payer
     )
   );
 
-  // 5. Initialize token metadata on the mint account
-  transaction.add(
-    createInitializeInstruction({
-      programId: TOKEN_2022_PROGRAM_ID,
-      mint: mint,
-      metadata: mint,
-      name: tokenMetadata.name,
-      symbol: tokenMetadata.symbol,
-      uri: tokenMetadata.uri,
-      mintAuthority: payer,
-      updateAuthority: payer,
-    })
-  );
-
-  // 6. Create ATA and mint supply
+  // 5. Create ATA and mint supply
   const supply = BigInt(config.supply) * BigInt(10 ** config.decimals);
   if (supply > 0n) {
     const ata = getAssociatedTokenAddressSync(mint, payer, false, TOKEN_2022_PROGRAM_ID);
@@ -125,14 +146,14 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     );
   }
 
-  // 7. Revoke Mint Authority
+  // 6. Revoke Mint Authority
   if (config.revokeMintAuthority) {
     transaction.add(
       createSetAuthorityInstruction(mint, payer, AuthorityType.MintTokens, null, [], TOKEN_2022_PROGRAM_ID)
     );
   }
 
-  // 8. Revoke Freeze Authority
+  // 7. Revoke Freeze Authority
   if (config.revokeFreezeAuthority) {
     transaction.add(
       createSetAuthorityInstruction(mint, payer, AuthorityType.FreezeAccount, null, [], TOKEN_2022_PROGRAM_ID)
