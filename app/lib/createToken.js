@@ -7,13 +7,11 @@ import {
 } from '@solana/web3.js';
 import {
   createInitializeMetadataPointerInstruction,
-  createInitializeMint2Instruction,
+  createInitializeMintInstruction,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
   createSetAuthorityInstruction,
   getAssociatedTokenAddressSync,
-  ExtensionType,
-  getMintLen,
   TOKEN_2022_PROGRAM_ID,
   AuthorityType,
   LENGTH_SIZE,
@@ -57,9 +55,12 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
   };
 
   // Calculate the space needed for the mint account
-  const mintLen = getMintLen([ExtensionType.MetadataPointer]);
-  const metadataLen = TYPE_SIZE + LENGTH_SIZE + pack(tokenMetadata).length;
-  const totalLen = mintLen + metadataLen;
+  // Base mint (82) + MetadataPointer ext header (3) + pointer (8+1) + TokenMetadata ext header (3) + packed metadata
+  const BASE_MINT_SIZE = 82;
+  const METADATA_POINTER_EXT_SIZE = 12; // 1 type + 2 len + 8 pointer + 1 padding
+  const TOKEN_METADATA_EXT_HEADER_SIZE = 3; // 1 type + 2 len
+  const packedMetadata = pack(tokenMetadata);
+  const totalLen = BASE_MINT_SIZE + METADATA_POINTER_EXT_SIZE + TOKEN_METADATA_EXT_HEADER_SIZE + packedMetadata.length;
 
   // Calculate rent
   const lamports = await connection.getMinimumBalanceForRentExemption(totalLen);
@@ -97,7 +98,7 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
 
   // 3. Initialize the Mint (must come before extension initialization)
   transaction.add(
-    createInitializeMint2Instruction(
+    createInitializeMintInstruction(
       mint,
       config.decimals,
       payer,
