@@ -7,7 +7,7 @@ import {
 } from '@solana/web3.js';
 import {
   createInitializeMetadataPointerInstruction,
-  createInitializeMintInstruction,
+  createInitializeMint2Instruction,
   createAssociatedTokenAccountInstruction,
   createMintToInstruction,
   createSetAuthorityInstruction,
@@ -97,7 +97,7 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
 
   // 3. Initialize the Mint (must come before extension initialization)
   transaction.add(
-    createInitializeMintInstruction(
+    createInitializeMint2Instruction(
       mint,
       config.decimals,
       payer,
