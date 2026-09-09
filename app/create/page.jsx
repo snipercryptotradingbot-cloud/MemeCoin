@@ -140,7 +140,7 @@ export default function CreatePage() {
       try {
         const savedToken = typeof window !== 'undefined' ? localStorage.getItem('mememint_token') : null;
         if (savedToken) {
-          await fetch('/api/tokens/record', {
+          const recordRes = await fetch('/api/tokens/record', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${savedToken}` },
             body: JSON.stringify({
@@ -150,10 +150,22 @@ export default function CreatePage() {
               image: imageResult?.url || '',
               metadata_uri: metaResult?.uri || '',
               network,
+              decimals: Number(token.decimals),
+              total_supply: token.supply,
+              description: token.description || '',
+              website: token.website || '',
+              twitter: token.twitter || '',
+              telegram: token.telegram || '',
             }),
           });
+          if (!recordRes.ok) {
+            const err = await recordRes.json().catch(() => ({}));
+            toast.warning('Record Note', err.error || 'Token created but could not be recorded. It will appear on your dashboard shortly.');
+          }
         }
-      } catch { /* non-critical */ }
+      } catch (e) {
+        toast.warning('Record Note', 'Token created but could not be recorded. It will appear on your dashboard shortly.');
+      }
 
       // Store in localStorage for explore page
       try {

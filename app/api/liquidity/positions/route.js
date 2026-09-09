@@ -18,6 +18,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const wallet = searchParams.get('wallet');
+    const network = searchParams.get('network');
     const db = process.env.DB;
 
     if (!wallet) {
@@ -26,13 +27,20 @@ export async function GET(request) {
 
     // Get all positions from D1
     if (db) {
-      const result = await db.prepare(
-        `SELECT up.*, lp.pool_address, lp.curve_address, lp.creator_wallet, lp.status as pool_status
+      let sql = `SELECT up.*, lp.pool_address, lp.curve_address, lp.creator_wallet, lp.status as pool_status, lp.network
          FROM user_liquidity_positions up
          JOIN liquidity_pools lp ON up.pool_id = lp.id
-         WHERE up.user_wallet = ?
-         ORDER BY up.created_at DESC`
-      ).bind(wallet).all();
+         WHERE up.user_wallet = ?`;
+      const params = [wallet];
+
+      if (network) {
+        sql += ` AND lp.network = ?`;
+        params.push(network);
+      }
+
+      sql += ` ORDER BY up.created_at DESC`;
+
+      const result = await db.prepare(sql).bind(...params).all();
 
       return NextResponse.json({ positions: result.results || [] });
     }
@@ -46,12 +54,12 @@ export async function GET(request) {
 
 /**
  * POST /api/liquidity/positions
- * Body: { wallet, pool_id, action, sol_amount, token_amount, tx_signature, lp_tokens }
+ * Body: { wallet, pool_id, action, sol_amount, token_amount, tx_signature, lp_tokens, network }
  */
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { wallet, pool_id, action, sol_amount, token_amount, tx_signature, lp_tokens } = body;
+    const { wallet, pool_id, action, sol_amount, token_amount, tx_signature, lp_tokens, network } = body;
     const db = process.env.DB;
 
     if (!wallet || !pool_id || !action) {
@@ -83,19 +91,21 @@ export async function POST(request) {
         `UPDATE liquidity_pools SET
           sol_accumulated = sol_accumulated + ?,
           token_reserves = token_reserves + ?,
+          network = COALESCE(?, network),
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`
-      ).bind(sol_amount || 0, token_amount || 0, pool_id).run();
+      ).bind(sol_amount || 0, token_amount || 0, network || null, pool_id).run();
     } else if (action === 'migrate') {
       await db.prepare(
         `UPDATE liquidity_pools SET
           is_migrated = 1,
-          amm = 'meteora',
-          lp_burned = 1,
+          amm = COALESCE(?, amm),
+          pool_address = COALESCE(?, pool_address),
+          transaction_signature = COALESCE(?, transaction_signature),
           status = 'migrated',
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?`
-      ).bind(pool_id).run();
+      ).bind(body.amm || 'meteora', body.pool_address || null, tx_signature || null, pool_id).run();
     } else if (action === 'buy' || action === 'sell') {
       await db.prepare(
         `UPDATE liquidity_pools SET

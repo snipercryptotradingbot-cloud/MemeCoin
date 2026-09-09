@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/app/providers/AuthProvider';
+import { useNetwork } from '@/app/providers/NetworkProvider';
 import NetworkBadge from '@/app/components/NetworkBadge';
 import AuthGuard from '@/app/components/AuthGuard';
 
 export default function DashboardPage() {
   const { user, token, isLoading, logout, getAuthHeaders } = useAuth();
+  const { network } = useNetwork();
   const [stats, setStats] = useState({ tokenCount: 0, liquidityCount: 0, activityCount: 0 });
   const [myTokens, setMyTokens] = useState([]);
   const [activity, setActivity] = useState([]);
@@ -15,16 +17,16 @@ export default function DashboardPage() {
   const [notifs, setNotifs] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
+  const fetchDashboard = useCallback(() => {
     if (!user || !token) return;
     const h = getAuthHeaders();
 
-    fetch('/api/profile', { headers: h })
+    fetch(`/api/profile?network=${network}`, { headers: h })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.user?.stats) setStats(d.user.stats); })
       .catch(() => {});
 
-    fetch('/api/tokens/mine', { headers: h })
+    fetch(`/api/tokens/mine?network=${network}`, { headers: h })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.tokens) setMyTokens(d.tokens); })
       .catch(() => {});
@@ -43,7 +45,9 @@ export default function DashboardPage() {
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) { setNotifs(d.notifications || []); setUnreadCount(d.unread_count || 0); } })
       .catch(() => {});
-  }, [user, token]);
+  }, [user, token, network]);
+
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
   if (isLoading) {
     return (
@@ -63,6 +67,8 @@ export default function DashboardPage() {
     );
   }
 
+  const networkLabel = network === 'mainnet' ? 'Mainnet' : 'Devnet';
+
   return (
     <AuthGuard>
     <div className="dashboard-page" id="dashboard-page">
@@ -74,6 +80,7 @@ export default function DashboardPage() {
             <p className="section-desc">Tokens, liquidity, activity, and chats tied to your account.</p>
           </div>
           <div className="header-actions">
+            <NetworkBadge network={network} />
             <Link href="/settings" className="btn btn-secondary">Settings</Link>
             <button className="btn btn-ghost" onClick={logout}>Log Out</button>
           </div>
@@ -131,11 +138,11 @@ export default function DashboardPage() {
 
           <section className="card dashboard-card wide">
             <div className="dashboard-card-header">
-              <h2 className="dashboard-card-title">My Tokens</h2>
+              <h2 className="dashboard-card-title">My Tokens — {networkLabel}</h2>
               <Link href="/create" className="btn btn-secondary btn-sm">+ Create</Link>
             </div>
             {myTokens.length === 0 ? (
-              <p className="input-hint">Tokens you launch will appear here.</p>
+              <p className="input-hint">No tokens launched on {networkLabel} yet. Tokens you launch will appear here.</p>
             ) : (
               <div className="token-list">
                 {myTokens.map(t => (
@@ -145,10 +152,29 @@ export default function DashboardPage() {
                       <span className="token-name">{t.name}</span>
                       <span className="token-symbol">{t.symbol}</span>
                     </div>
-                    <span className="token-mint">{t.mint_address.slice(0, 6)}...{t.mint_address.slice(-4)}</span>
-                    <div className="token-status">
-                      {t.is_migrated ? <span className="status-badge migrated">Migrated</span> : <span className="status-badge curve">Curve</span>}
+                    <div className="token-liquidity">
+                      {t.pool_address ? (
+                        <span className="liquidity-info">
+                          {t.is_migrated ? (
+                            <span className="status-badge migrated">Migrated</span>
+                          ) : (
+                            <>
+                              <span className="status-badge curve">Curve</span>
+                              <span className="liquidity-detail">
+                                {t.sol_accumulated != null && t.sol_target
+                                  ? `${Number(t.sol_accumulated).toFixed(1)}/${Number(t.sol_target)} SOL`
+                                  : t.bonding_curve_progress != null
+                                    ? `${Math.round(t.bonding_curve_progress * 100)}%`
+                                    : 'Active'}
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="liquidity-empty">No liquidity yet</span>
+                      )}
                     </div>
+                    <span className="token-mint">{t.mint_address.slice(0, 6)}...{t.mint_address.slice(-4)}</span>
                   </Link>
                 ))}
               </div>
@@ -219,7 +245,7 @@ export default function DashboardPage() {
       <style jsx>{`
         .dashboard-page { padding: var(--space-12) 0 var(--space-24); }
         .dashboard-header { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-4); margin-bottom: var(--space-6); flex-wrap: wrap; }
-        .header-actions { display: flex; gap: var(--space-3); }
+        .header-actions { display: flex; gap: var(--space-3); align-items: center; }
         .stats-bar { display: flex; gap: var(--space-3); margin-bottom: var(--space-8); flex-wrap: wrap; }
         .stat-pill { background: var(--bg-surface-card); border: 1px solid var(--hairline); border-radius: var(--radius-pill); padding: var(--space-2) var(--space-4); font-size: var(--text-sm); color: var(--muted); }
         .stat-num { font-weight: 700; color: var(--ink); margin-right: 4px; }
@@ -238,10 +264,14 @@ export default function DashboardPage() {
         .token-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-md); text-decoration: none; transition: all var(--transition-fast); }
         .token-row:hover { border-color: var(--brand-mint); background: var(--bg-surface-card); }
         .token-thumb { width: 32px; height: 32px; border-radius: var(--radius-sm); object-fit: cover; }
-        .token-info { display: flex; flex-direction: column; flex: 1; }
+        .token-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
         .token-name { font-size: var(--text-sm); font-weight: 600; color: var(--ink); }
         .token-symbol { font-size: var(--text-xs); color: var(--brand-mint-deep); font-weight: 600; }
-        .token-mint { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+        .token-mint { font-family: var(--font-mono); font-size: 10px; color: var(--muted); flex-shrink: 0; }
+        .token-liquidity { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+        .liquidity-info { display: flex; align-items: center; gap: var(--space-2); }
+        .liquidity-detail { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
+        .liquidity-empty { font-size: 10px; color: var(--muted); font-style: italic; }
         .status-badge { font-size: 10px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 600; }
         .status-badge.migrated { background: rgba(34, 197, 94, 0.1); color: #15803d; }
         .status-badge.curve { background: rgba(99, 102, 241, 0.1); color: #4f46e5; }

@@ -1038,6 +1038,8 @@ async function profileHandler(request, env) {
     const payload = await verifyAuth(request, env);
     if (!payload) return json({ error: 'Unauthorized' }, 401);
 
+    const networkFilter = url.searchParams.get('network');
+
     let user = null;
     if (env.DB) {
       try {
@@ -1054,12 +1056,18 @@ async function profileHandler(request, env) {
     let activityCount = 0;
     if (env.DB) {
       try {
-        const tc = await env.DB.prepare('SELECT COUNT(*) as c FROM tokens WHERE creator_id = ?').bind(user.id).first();
+        let tokenSql = 'SELECT COUNT(*) as c FROM tokens WHERE creator_id = ?';
+        const tokenParams = [user.id];
+        if (networkFilter) { tokenSql += ' AND network = ?'; tokenParams.push(networkFilter); }
+        const tc = await env.DB.prepare(tokenSql).bind(...tokenParams).first();
         tokenCount = tc?.c || 0;
-        const lc = await env.DB.prepare(
-          'SELECT COUNT(*) as c FROM liquidity_pools lp JOIN tokens t ON lp.token_id = t.id WHERE t.creator_id = ?'
-        ).bind(user.id).first();
+
+        let lpSql = 'SELECT COUNT(*) as c FROM liquidity_pools lp JOIN tokens t ON lp.token_id = t.id WHERE t.creator_id = ?';
+        const lpParams = [user.id];
+        if (networkFilter) { lpSql += ' AND t.network = ?'; lpParams.push(networkFilter); }
+        const lc = await env.DB.prepare(lpSql).bind(...lpParams).first();
         liquidityCount = lc?.c || 0;
+
         const ac = await env.DB.prepare('SELECT COUNT(*) as c FROM user_activities WHERE user_id = ?').bind(user.id).first();
         activityCount = ac?.c || 0;
       } catch {}
@@ -1422,7 +1430,7 @@ async function tokensHandler(request, env) {
     if (!payload) return json({ error: 'Unauthorized' }, 401);
 
     const body = await request.json();
-    const { mint_address, name, symbol, image, metadata_uri, network } = body;
+    const { mint_address, name, symbol, image, metadata_uri, network, decimals, total_supply, description, website, twitter, telegram } = body;
     if (!mint_address || !name || !symbol) return json({ error: 'mint_address, name, symbol required' }, 400);
 
     const id = mint_address;
@@ -1431,10 +1439,17 @@ async function tokensHandler(request, env) {
     if (env.DB) {
       try {
         await env.DB.prepare(
-          'INSERT OR REPLACE INTO tokens (id, mint_address, name, symbol, creator_id, image, metadata_uri, network, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(id, mint_address, name, symbol.toUpperCase(), payload.sub, image || '', metadata_uri || '', network || 'devnet', now).run();
+          `INSERT INTO tokens (id, mint_address, name, symbol, creator_id, image, metadata_uri, network, decimals, total_supply, description, website, twitter, telegram, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             name = excluded.name, symbol = excluded.symbol, image = excluded.image,
+             metadata_uri = excluded.metadata_uri, network = excluded.network,
+             decimals = excluded.decimals, total_supply = excluded.total_supply,
+             description = excluded.description, website = excluded.website,
+             twitter = excluded.twitter, telegram = excluded.telegram, updated_at = excluded.updated_at`
+        ).bind(id, mint_address, name, symbol.toUpperCase(), payload.sub, image || '', metadata_uri || '', network || 'devnet', decimals || 9, total_supply || '', description || '', website || '', twitter || '', telegram || '', now, now).run();
       } catch (e) {
-        return json({ error: 'Failed to record token' }, 500);
+        return json({ error: 'Failed to record token', detail: e.message }, 500);
       }
     }
 
@@ -1446,12 +1461,28 @@ async function tokensHandler(request, env) {
     const payload = await verifyAuth(request, env);
     if (!payload) return json({ error: 'Unauthorized' }, 401);
 
+    const networkFilter = url.searchParams.get('network');
+
     let tokens = [];
     if (env.DB) {
       try {
-        const { results } = await env.DB.prepare(
-          'SELECT t.id, t.mint_address, t.name, t.symbol, t.image, t.network, t.created_at, lp.pool_address, lp.bonding_curve_progress, lp.is_migrated, lp.sol_accumulated, lp.sol_target FROM tokens t LEFT JOIN liquidity_pools lp ON lp.token_id = t.id WHERE t.creator_id = ? ORDER BY t.created_at DESC'
-        ).bind(payload.sub).all();
+        let sql = `SELECT t.id, t.mint_address, t.name, t.symbol, t.image, t.network, t.created_at,
+              t.decimals, t.total_supply, t.description, t.status,
+              lp.pool_address, lp.curve_address, lp.bonding_curve_progress, lp.is_migrated,
+              lp.sol_accumulated, lp.sol_target, lp.amm, lp.status as pool_status
+           FROM tokens t
+           LEFT JOIN liquidity_pools lp ON lp.token_id = t.id
+           WHERE t.creator_id = ?`;
+        const params = [payload.sub];
+
+        if (networkFilter) {
+          sql += ` AND t.network = ?`;
+          params.push(networkFilter);
+        }
+
+        sql += ` ORDER BY t.created_at DESC`;
+
+        const { results } = await env.DB.prepare(sql).bind(...params).all();
         tokens = results || [];
       } catch {}
     }
@@ -1463,12 +1494,25 @@ async function tokensHandler(request, env) {
   const mintMatch = path.match(/^\/api\/tokens\/([A-Za-z0-9]+)$/);
   if (request.method === 'GET' && mintMatch) {
     const mint = mintMatch[1];
+    const networkFilter = url.searchParams.get('network');
     if (!env.DB) return json({ error: 'DB not configured' }, 500);
 
     try {
-      const token = await env.DB.prepare(
-        'SELECT t.*, u.username as creator_username, u.name as creator_name, lp.pool_address, lp.bonding_curve_progress, lp.is_migrated, lp.sol_accumulated, lp.sol_target, lp.amm FROM tokens t LEFT JOIN users u ON t.creator_id = u.id LEFT JOIN liquidity_pools lp ON lp.token_id = t.id WHERE t.mint_address = ?'
-      ).bind(mint).first();
+      let sql = `SELECT t.*, u.username as creator_username, u.name as creator_name,
+              lp.pool_address, lp.curve_address, lp.bonding_curve_progress, lp.is_migrated,
+              lp.sol_accumulated, lp.sol_target, lp.amm, lp.status as pool_status, lp.network as pool_network
+           FROM tokens t
+           LEFT JOIN users u ON t.creator_id = u.id
+           LEFT JOIN liquidity_pools lp ON lp.token_id = t.id
+           WHERE t.mint_address = ?`;
+      const params = [mint];
+
+      if (networkFilter) {
+        sql += ` AND t.network = ?`;
+        params.push(networkFilter);
+      }
+
+      const token = await env.DB.prepare(sql).bind(...params).first();
 
       if (!token) return json({ error: 'Token not found' }, 404);
 
