@@ -95,23 +95,23 @@ export async function createMemeCoin(connection, walletProvider, walletAddress, 
     })
   );
 
-  // 3. Initialize Metadata Pointer (points to the mint itself)
-  transaction.add(
-    createInitializeMetadataPointerInstruction(
-      mint,
-      payer,
-      mint,
-      TOKEN_2022_PROGRAM_ID
-    )
-  );
-
-  // 4. Initialize the Mint
+  // 3. Initialize the Mint (must come before extension initialization)
   transaction.add(
     createInitializeMintInstruction(
       mint,
       config.decimals,
       payer,
       payer, // freeze authority (will be revoked if configured)
+      TOKEN_2022_PROGRAM_ID
+    )
+  );
+
+  // 4. Initialize Metadata Pointer (points to the mint itself)
+  transaction.add(
+    createInitializeMetadataPointerInstruction(
+      mint,
+      payer,
+      mint,
       TOKEN_2022_PROGRAM_ID
     )
   );
