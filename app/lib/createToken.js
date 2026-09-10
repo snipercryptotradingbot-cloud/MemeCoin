@@ -12,7 +12,7 @@ import {
   createMintToInstruction,
   createSetAuthorityInstruction,
   getAssociatedTokenAddressSync,
-  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   AuthorityType,
 } from '@solana/spl-token';
 
@@ -104,7 +104,7 @@ export async function createMintTransaction(connection, walletProvider, walletAd
       newAccountPubkey: mint,
       space: 82,
       lamports,
-      programId: TOKEN_2022_PROGRAM_ID,
+      programId: TOKEN_PROGRAM_ID,
     })
   );
 
@@ -114,32 +114,32 @@ export async function createMintTransaction(connection, walletProvider, walletAd
       config.decimals,
       payer,
       payer,
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     )
   );
 
   const supply = BigInt(config.supply) * BigInt(10 ** config.decimals);
   if (supply > 0n) {
-    const ata = getAssociatedTokenAddressSync(mint, payer, false, TOKEN_2022_PROGRAM_ID);
+    const ata = getAssociatedTokenAddressSync(mint, payer, false, TOKEN_PROGRAM_ID);
 
     transaction.add(
-      createAssociatedTokenAccountInstruction(payer, ata, payer, mint, TOKEN_2022_PROGRAM_ID)
+      createAssociatedTokenAccountInstruction(payer, ata, payer, mint, TOKEN_PROGRAM_ID)
     );
 
     transaction.add(
-      createMintToInstruction(mint, ata, payer, supply, [], TOKEN_2022_PROGRAM_ID)
+      createMintToInstruction(mint, ata, payer, supply, [], TOKEN_PROGRAM_ID)
     );
   }
 
   if (config.revokeMintAuthority) {
     transaction.add(
-      createSetAuthorityInstruction(mint, payer, AuthorityType.MintTokens, null, [], TOKEN_2022_PROGRAM_ID)
+      createSetAuthorityInstruction(mint, payer, AuthorityType.MintTokens, null, [], TOKEN_PROGRAM_ID)
     );
   }
 
   if (config.revokeFreezeAuthority) {
     transaction.add(
-      createSetAuthorityInstruction(mint, payer, AuthorityType.FreezeAccount, null, [], TOKEN_2022_PROGRAM_ID)
+      createSetAuthorityInstruction(mint, payer, AuthorityType.FreezeAccount, null, [], TOKEN_PROGRAM_ID)
     );
   }
 

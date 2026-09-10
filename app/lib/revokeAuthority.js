@@ -7,7 +7,7 @@ import {
 import {
   createSetAuthorityInstruction,
   AuthorityType,
-  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 
 const REVOKE_FEE_SOL = 0.02;
@@ -42,7 +42,7 @@ export async function revokeMintAuthority(
       AuthorityType.MintTokens,
       null,
       [],
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     )
   );
 
@@ -90,7 +90,7 @@ export async function revokeFreezeAuthority(
       AuthorityType.FreezeAccount,
       null,
       [],
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     )
   );
 
@@ -138,7 +138,7 @@ export async function revokeBoth(
       AuthorityType.MintTokens,
       null,
       [],
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     )
   );
 
@@ -149,7 +149,7 @@ export async function revokeBoth(
       AuthorityType.FreezeAccount,
       null,
       [],
-      TOKEN_2022_PROGRAM_ID
+      TOKEN_PROGRAM_ID
     )
   );
 

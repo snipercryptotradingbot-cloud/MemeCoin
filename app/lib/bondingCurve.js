@@ -4,7 +4,7 @@ import {
   Transaction,
 } from '@solana/web3.js';
 import {
-  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import {
@@ -45,14 +45,14 @@ export async function buildInitializeCurveTx(
     mint,
     curvePda,
     true,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const creatorTokenAccount = getAssociatedTokenAddressSync(
     mint,
     payer,
     false,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const solLamports = solToLamports(initialSol);
@@ -91,7 +91,7 @@ export async function buildInitializeCurveTx(
     { pubkey: solVaultPda, isSigner: false, isWritable: true },
     { pubkey: tokenVault, isSigner: false, isWritable: true },
     { pubkey: creatorTokenAccount, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },
   ];
@@ -131,14 +131,14 @@ export async function buildBuyTokensTx(
     mint,
     curvePda,
     true,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const userTokenAccount = getAssociatedTokenAddressSync(
     mint,
     payer,
     false,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const solLamports = solToLamports(solAmount);
@@ -163,7 +163,7 @@ export async function buildBuyTokensTx(
     { pubkey: tokenVault, isSigner: false, isWritable: true },
     { pubkey: userTokenAccount, isSigner: false, isWritable: true },
     { pubkey: platformWallet, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },
   ];
@@ -203,14 +203,14 @@ export async function buildSellTokensTx(
     mint,
     curvePda,
     true,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const userTokenAccount = getAssociatedTokenAddressSync(
     mint,
     payer,
     false,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const curveState = await getBondingCurveState(connection, mintAddress, network);
@@ -233,7 +233,7 @@ export async function buildSellTokensTx(
     { pubkey: tokenVault, isSigner: false, isWritable: true },
     { pubkey: userTokenAccount, isSigner: false, isWritable: true },
     { pubkey: platformWallet, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     { pubkey: new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'), isSigner: false, isWritable: false },
   ];
@@ -273,14 +273,14 @@ export async function buildMigrateToDexTx(
     mint,
     curvePda,
     true,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const creatorTokenAccount = getAssociatedTokenAddressSync(
     mint,
     payer,
     false,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
 
   const transaction = new Transaction();
@@ -296,7 +296,7 @@ export async function buildMigrateToDexTx(
     { pubkey: solVaultPda, isSigner: false, isWritable: true },
     { pubkey: tokenVault, isSigner: false, isWritable: true },
     { pubkey: creatorTokenAccount, isSigner: false, isWritable: true },
-    { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
 

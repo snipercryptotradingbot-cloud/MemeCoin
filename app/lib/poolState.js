@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
-import { TOKEN_2022_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { getCurvePda, getSolVaultPda, getProgramId, BONDING_CURVE_PROGRAM_ID } from './constants.js';
 
 // BondingCurve: discriminator(8) + creator(32) + mint(32) + curveBump(1) + solVaultBump(1) + status(1)
@@ -66,7 +66,7 @@ export async function getBondingCurveState(connection, mintAddress, network = 'd
     mint,
     curvePda,
     true,
-    TOKEN_2022_PROGRAM_ID
+    TOKEN_PROGRAM_ID
   );
   const tokenVaultInfo = await connection.getTokenAccountBalance(tokenVault);
   curve.tokenVaultAmount = tokenVaultInfo?.value?.amount ? Number(tokenVaultInfo.value.amount) : 0;
