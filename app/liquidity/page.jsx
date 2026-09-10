@@ -772,6 +772,39 @@ export default function LiquidityPage() {
                           <span className="my-pool-stat-val">{pos.lp_tokens || '0'}</span>
                         </div>
                       </div>
+                      {pos.pool_status === 'active' && pos.mint_address && (
+                        <button
+                          className="btn btn-danger btn-sm btn-full"
+                          style={{ marginTop: 'var(--space-2)' }}
+                          onClick={async () => {
+                            if (!confirm('Close this pool? Remaining funds will be returned to your wallet.')) return;
+                            try {
+                              const res = await fetch(API_BASE, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  action: 'close',
+                                  wallet: address,
+                                  mint_address: pos.mint_address,
+                                  network: pos.network || network,
+                                }),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error);
+
+                              const { Transaction } = await import('@solana/web3.js');
+                              const txBytes = Uint8Array.from(atob(data.transaction), c => c.charCodeAt(0));
+                              const transaction = Transaction.from(txBytes);
+                              await executeTx(transaction, 'Close Pool');
+                              loadPositions();
+                            } catch (err) {
+                              setTxError(err.message);
+                            }
+                          }}
+                        >
+                          Close & Withdraw
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

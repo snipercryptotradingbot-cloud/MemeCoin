@@ -27,7 +27,7 @@ export async function GET(request) {
 
     // Get all positions from D1
     if (db) {
-      let sql = `SELECT up.*, lp.pool_address, lp.curve_address, lp.creator_wallet, lp.status as pool_status, lp.network
+      let sql = `SELECT up.*, lp.pool_address, lp.curve_address, lp.creator_wallet, lp.status as pool_status, lp.network, lp.token_id as mint_address
          FROM user_liquidity_positions up
          JOIN liquidity_pools lp ON up.pool_id = lp.id
          WHERE up.user_wallet = ?`;
