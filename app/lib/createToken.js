@@ -85,9 +85,9 @@ export async function createMintTransaction(connection, walletProvider, walletAd
   if (treasuryAddress) {
     const platformFeeLamports = Math.floor(
       parseFloat(process.env.NEXT_PUBLIC_PLATFORM_FEE_SOL || '0.1') * LAMPORTS_PER_SOL
-    ) - lamports - 5000;
+    );
 
-    if (platformFeeLamports > 0) {
+    if (platformFeeLamports > lamports + 10000) {
       transaction.add(
         SystemProgram.transfer({
           fromPubkey: payer,
@@ -149,7 +149,9 @@ export async function createMintTransaction(connection, walletProvider, walletAd
 
   transaction.partialSign(mintKeypair);
 
-  const txSignature = await walletProvider.sendTransaction(transaction, connection);
+  const txSignature = await walletProvider.sendTransaction(transaction, connection, {
+    skipPreflight: true,
+  });
 
   await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
 
