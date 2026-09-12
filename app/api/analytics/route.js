@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 async function getDb() {
-  const db = process.env.DB;
-  if (!db) throw new Error('Database not configured');
-  return db;
+  const { env } = await getCloudflareContext({ async: true });
+  return env.DB;
 }
 
 export async function GET(request) {

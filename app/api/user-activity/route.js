@@ -1,4 +1,10 @@
 import { NextResponse } from 'next/server';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
+
+async function getDb() {
+  const { env } = await getCloudflareContext({ async: true });
+  return env.DB;
+}
 
 export async function POST(request) {
   try {
@@ -9,7 +15,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'user_id and action are required' }, { status: 400 });
     }
 
-    const db = process.env.DB;
+    const db = await getDb();
     if (!db) {
       return new Response(JSON.stringify({ error: 'Database not configured' }), {
         status: 500,
@@ -53,7 +59,7 @@ export async function GET(request) {
     const limit = parseInt(url.searchParams.get('limit') || '50');
     const action = url.searchParams.get('action');
 
-    const db = process.env.DB;
+    const db = await getDb();
     if (!db) {
       return new Response(JSON.stringify({ error: 'Database not configured' }), {
         status: 500,

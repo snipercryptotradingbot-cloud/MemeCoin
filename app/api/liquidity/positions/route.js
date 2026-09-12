@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { Connection } from '@solana/web3.js';
 import { getCurvePda } from '@/app/lib/constants';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
+
+async function getDb() {
+  const { env } = await getCloudflareContext({ async: true });
+  return env.DB;
+}
 
 function getConnection(network = 'devnet') {
   const url = network === 'mainnet'
@@ -19,7 +25,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const wallet = searchParams.get('wallet');
     const network = searchParams.get('network');
-    const db = process.env.DB;
+    const db = await getDb();
 
     if (!wallet) {
       return NextResponse.json({ error: 'wallet is required' }, { status: 400 });
@@ -60,7 +66,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { wallet, pool_id, action, sol_amount, token_amount, tx_signature, lp_tokens, network } = body;
-    const db = process.env.DB;
+    const db = await getDb();
 
     if (!wallet || !pool_id || !action) {
       return NextResponse.json({ error: 'wallet, pool_id, and action are required' }, { status: 400 });

@@ -1,3 +1,10 @@
+import { getCloudflareContext } from '@opennextjs/cloudflare';
+
+async function getDb() {
+  const { env } = await getCloudflareContext({ async: true });
+  return env.DB;
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -10,7 +17,7 @@ export async function POST(request) {
       });
     }
 
-    const db = process.env.DB;
+    const db = await getDb();
     if (!db) {
       return new Response(JSON.stringify({ error: 'Database not configured' }), {
         status: 500,
@@ -50,7 +57,7 @@ export async function GET(request) {
     const eventType = url.searchParams.get('event_type');
     const limit = parseInt(url.searchParams.get('limit') || '50');
 
-    const db = process.env.DB;
+    const db = await getDb();
     if (!db) {
       return new Response(JSON.stringify({ error: 'Database not configured' }), {
         status: 500,

@@ -10,6 +10,12 @@ import {
 } from '@/app/lib/bondingCurve';
 import { getBondingCurveState, getPoolSummary } from '@/app/lib/poolState';
 import { TREASURY_WALLET } from '@/app/lib/constants';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
+
+async function getDb() {
+  const { env } = await getCloudflareContext({ async: true });
+  return env.DB;
+}
 
 function getConnection(network = 'devnet') {
   const url = network === 'mainnet'
@@ -27,7 +33,7 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action') || 'status';
-    const db = process.env.DB;
+    const db = await getDb();
 
     if (action === 'status') {
       const mintAddress = searchParams.get('mint_address');
@@ -105,7 +111,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { action, wallet, mint_address, network = 'devnet' } = body;
-    const db = process.env.DB;
+    const db = await getDb();
 
     if (!action) {
       return NextResponse.json({ error: 'action is required' }, { status: 400 });

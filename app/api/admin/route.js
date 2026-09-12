@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 function parseAuth(request) {
   const header = request.headers.get('authorization') || '';
   const match = header.match(/^Bearer\s+(.+)$/);
   return match ? match[1] : null;
+}
+
+async function getDb() {
+  const { env } = await getCloudflareContext({ async: true });
+  return env.DB;
 }
 
 export async function GET(request) {
@@ -13,7 +19,7 @@ export async function GET(request) {
   }
 
   try {
-    const db = process.env.DB;
+    const db = await getDb();
     if (!db) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
     }
@@ -45,7 +51,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'action and target are required' }, { status: 400 });
     }
 
-    const db = process.env.DB;
+    const db = await getDb();
     if (!db) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 500 });
     }

@@ -735,9 +735,12 @@ const WS_MSG_JOIN = 'join';
 const WS_MSG_LEAVE = 'leave';
 const WS_MSG_CONNECTED_USERS = 'connected_users';
 const WS_MSG_SYSTEM = 'system';
+const WS_MSG_REACTION = 'reaction';
+const WS_MSG_RECEIPT = 'receipt';
 const TYPING_TIMEOUT_MS = 3000;
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_MAX_MSG = 5;
+const MAX_CACHED_MESSAGES = 200;
 
 export class ChatRoom {
   constructor(state, env) {
@@ -748,11 +751,14 @@ export class ChatRoom {
     this.typingTimers = new Map();
     this.rateLimitWindow = new Map();
     this.roomId = 'general';
+    this.recentMessages = null;
   }
 
   async fetch(request) {
     const url = new URL(request.url);
-    this.roomId = url.pathname.replace('/api/chat', '').replace(/^\//, '') || 'general';
+    const rawPath = url.pathname.replace('/api/chat', '').replace(/^\//, '') || 'general';
+    const parts = rawPath.split('/');
+    this.roomId = parts[0] || 'general';
     if (!this.roomId || this.roomId === 'chat') this.roomId = 'general';
 
     if (request.headers.get('Upgrade') === 'websocket') {
@@ -764,11 +770,21 @@ export class ChatRoom {
         status: 204,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400',
         },
       });
+    }
+
+    if (parts[1] === 'reactions' && parts[2]) {
+      if (request.method === 'POST') return this.toggleReaction(request, parts[2]);
+      return json({ error: 'Method Not Allowed' }, 405);
+    }
+
+    if (parts[1] === 'receipts') {
+      if (request.method === 'POST') return this.updateReadReceipt(request);
+      return json({ error: 'Method Not Allowed' }, 405);
     }
 
     if (request.method === 'GET') {
@@ -798,6 +814,10 @@ export class ChatRoom {
           this.handleChatMessage(server, userWallet, data);
         } else if (data.type === WS_MSG_TYPING) {
           this.handleTyping(server, userWallet, data);
+        } else if (data.type === WS_MSG_REACTION) {
+          this.handleReactionMessage(server, userWallet, data);
+        } else if (data.type === WS_MSG_RECEIPT) {
+          this.handleReceiptMessage(server, userWallet, data);
         } else if (data.type === WS_MSG_JOIN) {
           this.broadcast({
             type: WS_MSG_SYSTEM,
@@ -865,8 +885,6 @@ export class ChatRoom {
     }
 
     this.clearTyping(wallet);
-
-    // Clear typing indicator for this user
     this.clearTyping(userWallet);
 
     const id = crypto.randomUUID();
@@ -875,6 +893,7 @@ export class ChatRoom {
       id, userWallet: wallet, message, messageType,
       createdAt: now, timestamp: Date.now(),
       userId: data.userId || wallet,
+      reactions: [],
     };
 
     if (this.env.DB) {
@@ -888,7 +907,60 @@ export class ChatRoom {
       } catch {}
     }
 
+    this.pushToCache(chatMessage);
     this.broadcast({ type: WS_MSG_CHAT, payload: chatMessage });
+  }
+
+  async handleReactionMessage(server, userWallet, data) {
+    const { messageId, reaction } = data;
+    if (!messageId || !reaction) return;
+    const wallet = data.userWallet || userWallet || 'Anonymous';
+
+    try {
+      const existing = await this.env.DB.prepare(
+        'SELECT id FROM chat_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?'
+      ).bind(messageId, wallet, reaction).first();
+
+      let removed = false;
+      if (existing) {
+        await this.env.DB.prepare('DELETE FROM chat_reactions WHERE id = ?').bind(existing.id).run();
+        removed = true;
+      } else {
+        await this.env.DB.prepare(
+          'INSERT INTO chat_reactions (id, message_id, user_id, reaction) VALUES (?, ?, ?, ?)'
+        ).bind(crypto.randomUUID(), messageId, wallet, reaction).run();
+      }
+
+      this.broadcast({
+        type: WS_MSG_REACTION,
+        payload: { messageId, userWallet: wallet, reaction, removed, roomId: this.roomId },
+      });
+    } catch {}
+  }
+
+  async handleReceiptMessage(server, userWallet, data) {
+    const { lastReadMessageId } = data;
+    const wallet = data.userWallet || userWallet || 'Anonymous';
+
+    try {
+      const now = new Date().toISOString();
+      await this.env.DB.prepare(
+        `INSERT INTO chat_read_receipts (id, user_id, room_id, last_read_message_id, last_read_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, room_id) DO UPDATE SET
+           last_read_message_id = excluded.last_read_message_id,
+           last_read_at = excluded.last_read_at`
+      ).bind(crypto.randomUUID(), wallet, this.roomId, lastReadMessageId || null, now).run();
+    } catch {}
+  }
+
+  pushToCache(msg) {
+    if (!this.recentMessages) this.recentMessages = [];
+    this.recentMessages.push(msg);
+    if (this.recentMessages.length > MAX_CACHED_MESSAGES) {
+      this.recentMessages = this.recentMessages.slice(-MAX_CACHED_MESSAGES);
+    }
+    this.state.storage.put('messages', this.recentMessages).catch(() => {});
   }
 
   handleTyping(server, userWallet, data) {
@@ -973,31 +1045,79 @@ export class ChatRoom {
 
   async getMessages(request) {
     const url = new URL(request.url);
-    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
     const before = url.searchParams.get('before');
+    const after = url.searchParams.get('after');
 
     try {
-      let query = 'SELECT id, user_wallet as userWallet, message, message_type as messageType, created_at as createdAt FROM chats WHERE room_id = ?';
-      const params = [this.roomId];
-      if (before) {
-        query += ' AND id < ?';
-        params.push(before);
+      let messages = [];
+      let hasMore = false;
+      let cursor = null;
+
+      if (!before && !after) {
+        if (!this.recentMessages) {
+          const { results } = await this.env.DB.prepare(
+            'SELECT id, user_wallet as userWallet, message, message_type as messageType, created_at as createdAt FROM chats WHERE room_id = ? ORDER BY created_at DESC LIMIT ?'
+          ).bind(this.roomId, MAX_CACHED_MESSAGES).all();
+          this.recentMessages = (results || []).reverse();
+          this.state.storage.put('messages', this.recentMessages).catch(() => {});
+        }
+        messages = this.recentMessages.slice(-limit);
+        hasMore = this.recentMessages.length > limit;
+      } else if (before) {
+        const { results } = await this.env.DB.prepare(
+          'SELECT id, user_wallet as userWallet, message, message_type as messageType, created_at as createdAt FROM chats WHERE room_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?'
+        ).bind(this.roomId, before, limit + 1).all();
+        const rows = (results || []).reverse();
+        hasMore = rows.length > limit;
+        messages = hasMore ? rows.slice(0, limit) : rows;
+        if (messages.length > 0) cursor = messages[0].createdAt;
+      } else if (after) {
+        const { results } = await this.env.DB.prepare(
+          'SELECT id, user_wallet as userWallet, message, message_type as messageType, created_at as createdAt FROM chats WHERE room_id = ? AND created_at > ? ORDER BY created_at ASC'
+        ).bind(this.roomId, after).all();
+        messages = (results || []).map(r => ({
+          id: r.id,
+          userWallet: r.userWallet,
+          message: r.message,
+          messageType: r.messageType || 'text',
+          createdAt: r.createdAt,
+          reactions: [],
+        }));
       }
-      query += ' ORDER BY created_at DESC LIMIT ?';
-      params.push(limit);
 
-      const { results } = await this.env.DB.prepare(query).bind(...params).all();
-      const messages = (results || []).map(r => ({
-        id: r.id,
-        userWallet: r.userWallet,
-        message: r.message,
-        messageType: r.messageType || 'text',
-        createdAt: r.createdAt,
-      })).reverse();
+      const msgIds = messages.map(m => m.id);
+      let reactionsMap = {};
+      if (msgIds.length > 0) {
+        const placeholders = msgIds.map(() => '?').join(',');
+        const { results: reactions } = await this.env.DB.prepare(
+          `SELECT message_id as messageId, user_wallet as userWallet, reaction FROM chat_reactions WHERE message_id IN (${placeholders})`
+        ).bind(...msgIds).all();
+        for (const r of (reactions || [])) {
+          if (!reactionsMap[r.messageId]) reactionsMap[r.messageId] = [];
+          reactionsMap[r.messageId].push({ reaction: r.reaction, userWallet: r.userWallet });
+        }
+      }
 
-      return json({ success: true, roomId: this.roomId, messages });
+      const { results: receipts } = await this.env.DB.prepare(
+        'SELECT user_id as userWallet, last_read_message_id as lastReadMessageId, last_read_at as lastReadAt FROM chat_read_receipts WHERE room_id = ?'
+      ).bind(this.roomId).all();
+
+      const enriched = messages.map(m => ({
+        ...m,
+        reactions: reactionsMap[m.id] || (m.reactions !== undefined ? m.reactions : []),
+      }));
+
+      return json({
+        success: true,
+        roomId: this.roomId,
+        messages: enriched,
+        hasMore,
+        cursor,
+        readReceipts: receipts || [],
+      });
     } catch (err) {
-      return json({ success: true, roomId: this.roomId, messages: [] });
+      return json({ success: true, roomId: this.roomId, messages: [], hasMore: false, readReceipts: [] });
     }
   }
 
@@ -1020,10 +1140,60 @@ export class ChatRoom {
       } catch {}
     }
 
-    return json({
-      success: true,
-      message: { id, userWallet, message, messageType, createdAt: now },
-    });
+    const chatMsg = { id, userWallet, message, messageType, createdAt: now, reactions: [] };
+    this.pushToCache(chatMsg);
+
+    return json({ success: true, message: chatMsg });
+  }
+
+  async toggleReaction(request, msgId) {
+    try {
+      const { userWallet, reaction } = await request.json();
+      if (!userWallet || !reaction) return json({ error: 'userWallet and reaction are required' }, 400);
+
+      const existing = await this.env.DB.prepare(
+        'SELECT id FROM chat_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?'
+      ).bind(msgId, userWallet, reaction).first();
+
+      let removed = false;
+      if (existing) {
+        await this.env.DB.prepare('DELETE FROM chat_reactions WHERE id = ?').bind(existing.id).run();
+        removed = true;
+      } else {
+        await this.env.DB.prepare(
+          'INSERT INTO chat_reactions (id, message_id, user_id, reaction) VALUES (?, ?, ?, ?)'
+        ).bind(crypto.randomUUID(), msgId, userWallet, reaction).run();
+      }
+
+      this.broadcast({
+        type: WS_MSG_REACTION,
+        payload: { messageId: msgId, userWallet, reaction, removed, roomId: this.roomId },
+      });
+
+      return json({ success: true, reaction, removed });
+    } catch (err) {
+      return json({ error: 'Failed to toggle reaction' }, 500);
+    }
+  }
+
+  async updateReadReceipt(request) {
+    try {
+      const { userWallet, lastReadMessageId } = await request.json();
+      if (!userWallet) return json({ error: 'userWallet is required' }, 400);
+
+      const now = new Date().toISOString();
+      await this.env.DB.prepare(
+        `INSERT INTO chat_read_receipts (id, user_id, room_id, last_read_message_id, last_read_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, room_id) DO UPDATE SET
+           last_read_message_id = excluded.last_read_message_id,
+           last_read_at = excluded.last_read_at`
+      ).bind(crypto.randomUUID(), userWallet, this.roomId, lastReadMessageId || null, now).run();
+
+      return json({ success: true });
+    } catch (err) {
+      return json({ error: 'Failed to update read receipt' }, 500);
+    }
   }
 }
 
