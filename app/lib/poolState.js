@@ -121,6 +121,7 @@ export async function getPoolSummary(connection, mintAddress, dbPool = null, net
     totalSwaps: curve.totalSwaps,
     createdAt: curve.createdAt,
     dlmmPool: curve.dlmmPool,
+    solVaultLamports: curve.solVaultLamports || 0,
     // Merge DB data if available
     ...(dbPool ? {
       poolId: dbPool.id,

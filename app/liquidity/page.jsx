@@ -297,9 +297,20 @@ export default function LiquidityPage() {
   };
 
   // Buy tokens
+  const RENT_EXEMPT_RESERVE = 890880;
+  const maxBuySol = swapPool?.solVaultLamports
+    ? Math.max(0, (swapPool.solVaultLamports - RENT_EXEMPT_RESERVE) / 1e9)
+    : null;
+
   const handleBuy = async (e) => {
     e.preventDefault();
     if (!isConnected || !swapAmount || !swapPool) return;
+
+    const amount = parseFloat(swapAmount);
+    if (maxBuySol !== null && amount > maxBuySol) {
+      setTxError(`Max buyable is ${maxBuySol.toFixed(4)} SOL. The vault must keep ~0.00089 SOL rent-exempt.`);
+      return;
+    }
 
     setSwapping(true);
     setSwapResult(null);
@@ -992,16 +1003,30 @@ export default function LiquidityPage() {
                     <label className="input-label">
                       {swapMode === 'buy' ? 'SOL Amount' : 'Token Amount'}
                     </label>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
                     <input
                       type="number"
                       className="input"
                       placeholder={swapMode === 'buy' ? '0.1' : '100000'}
                       min={swapMode === 'buy' ? '0.001' : '1'}
                       step={swapMode === 'buy' ? '0.001' : '1'}
+                      max={swapMode === 'buy' && maxBuySol ? maxBuySol.toFixed(4) : undefined}
                       required
                       value={swapAmount}
                       onChange={(e) => setSwapAmount(e.target.value)}
+                      style={{ flex: 1 }}
                     />
+                    {swapMode === 'buy' && maxBuySol !== null && maxBuySol > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => setSwapAmount(maxBuySol.toFixed(4))}
+                        style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        Max {maxBuySol.toFixed(4)}
+                      </button>
+                    )}
+                    </div>
                   </div>
 
                   {swapAmount && (
