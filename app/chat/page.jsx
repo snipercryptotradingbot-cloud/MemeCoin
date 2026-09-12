@@ -78,6 +78,8 @@ export default function ChatPage() {
   const isLoadingOlderRef = useRef(false);
   const prevRoomRef = useRef(null);
   const emojiPickerRef = useRef(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   const isNearBottom = useCallback(() => {
     const el = messagesContainerRef.current;
@@ -110,8 +112,9 @@ export default function ChatPage() {
       ws.onopen = () => {
         setIsConnected(true);
         setChatError('');
-        if (messages.length > 0) {
-          const newestId = messages[messages.length - 1]?.id;
+        const msgs = messagesRef.current;
+        if (msgs.length > 0) {
+          const newestId = msgs[msgs.length - 1]?.id;
           if (newestId) {
             ws.send(JSON.stringify({ type: 'receipt', userWallet: moniker, lastReadMessageId: newestId }));
           }
@@ -175,7 +178,7 @@ export default function ChatPage() {
     } catch {
       setChatError('WebSocket connection failed');
     }
-  }, [moniker, messages.length]);
+  }, [moniker]);
 
   useEffect(() => {
     const savedMoniker = localStorage.getItem('mememint_moniker');
