@@ -752,6 +752,18 @@ export class ChatRoom {
     this.rateLimitWindow = new Map();
     this.roomId = 'general';
     this.recentMessages = null;
+    this._storageLoaded = false;
+  }
+
+  async _loadStorageMessages() {
+    if (this._storageLoaded) return;
+    this._storageLoaded = true;
+    try {
+      const stored = await this.state.storage.get('messages');
+      if (Array.isArray(stored) && stored.length > 0) {
+        this.recentMessages = stored;
+      }
+    } catch {}
   }
 
   async fetch(request) {
@@ -918,13 +930,17 @@ export class ChatRoom {
 
     try {
       const existing = await this.env.DB.prepare(
-        'SELECT id FROM chat_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?'
-      ).bind(messageId, wallet, reaction).first();
+        'SELECT id, reaction FROM chat_reactions WHERE message_id = ? AND user_id = ?'
+      ).bind(messageId, wallet).first();
 
       let removed = false;
       if (existing) {
-        await this.env.DB.prepare('DELETE FROM chat_reactions WHERE id = ?').bind(existing.id).run();
-        removed = true;
+        if (existing.reaction === reaction) {
+          await this.env.DB.prepare('DELETE FROM chat_reactions WHERE id = ?').bind(existing.id).run();
+          removed = true;
+        } else {
+          await this.env.DB.prepare('UPDATE chat_reactions SET reaction = ? WHERE id = ?').bind(reaction, existing.id).run();
+        }
       } else {
         await this.env.DB.prepare(
           'INSERT INTO chat_reactions (id, message_id, user_id, reaction) VALUES (?, ?, ?, ?)'
@@ -1055,13 +1071,11 @@ export class ChatRoom {
       let cursor = null;
 
       if (!before && !after) {
-        if (!this.recentMessages) {
-          const { results } = await this.env.DB.prepare(
-            'SELECT id, user_wallet as userWallet, message, message_type as messageType, created_at as createdAt FROM chats WHERE room_id = ? ORDER BY created_at DESC LIMIT ?'
-          ).bind(this.roomId, MAX_CACHED_MESSAGES).all();
-          this.recentMessages = (results || []).reverse();
-          this.state.storage.put('messages', this.recentMessages).catch(() => {});
-        }
+        const { results } = await this.env.DB.prepare(
+          'SELECT id, user_wallet as userWallet, message, message_type as messageType, created_at as createdAt FROM chats WHERE room_id = ? ORDER BY created_at DESC LIMIT ?'
+        ).bind(this.roomId, MAX_CACHED_MESSAGES).all();
+        this.recentMessages = (results || []).reverse();
+        this.state.storage.put('messages', this.recentMessages).catch(() => {});
         messages = this.recentMessages.slice(-limit);
         hasMore = this.recentMessages.length > limit;
       } else if (before) {
@@ -1152,13 +1166,17 @@ export class ChatRoom {
       if (!userWallet || !reaction) return json({ error: 'userWallet and reaction are required' }, 400);
 
       const existing = await this.env.DB.prepare(
-        'SELECT id FROM chat_reactions WHERE message_id = ? AND user_id = ? AND reaction = ?'
-      ).bind(msgId, userWallet, reaction).first();
+        'SELECT id, reaction FROM chat_reactions WHERE message_id = ? AND user_id = ?'
+      ).bind(msgId, userWallet).first();
 
       let removed = false;
       if (existing) {
-        await this.env.DB.prepare('DELETE FROM chat_reactions WHERE id = ?').bind(existing.id).run();
-        removed = true;
+        if (existing.reaction === reaction) {
+          await this.env.DB.prepare('DELETE FROM chat_reactions WHERE id = ?').bind(existing.id).run();
+          removed = true;
+        } else {
+          await this.env.DB.prepare('UPDATE chat_reactions SET reaction = ? WHERE id = ?').bind(reaction, existing.id).run();
+        }
       } else {
         await this.env.DB.prepare(
           'INSERT INTO chat_reactions (id, message_id, user_id, reaction) VALUES (?, ?, ?, ?)'

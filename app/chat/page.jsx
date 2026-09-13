@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import AuthGuard from '@/app/components/AuthGuard';
+import { useAuth } from '@/app/providers/AuthProvider';
 
 const DEFAULT_ROOMS = [
   { id: 'general', name: 'General', desc: 'Open community discussion across creators and traders.', badge: 'G', online: 0, members: '0' },
@@ -44,7 +45,16 @@ function getInitials(wallet) {
 
 export default function ChatPage() {
   const [rooms, setRooms] = useState(DEFAULT_ROOMS);
-  const [active, setActive] = useState(DEFAULT_ROOMS[0]);
+  const [active, setActive] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedRoom = localStorage.getItem('mememint_chat_room');
+      if (savedRoom) {
+        const match = DEFAULT_ROOMS.find(r => r.id === savedRoom);
+        if (match) return match;
+      }
+    }
+    return DEFAULT_ROOMS[0];
+  });
   const [moniker, setMoniker] = useState('');
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
@@ -66,6 +76,8 @@ export default function ChatPage() {
   const [readReceipts, setReadReceipts] = useState([]);
   const [reactingTo, setReactingTo] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showCoinPicker, setShowCoinPicker] = useState(false);
+  const [userTokens, setUserTokens] = useState([]);
 
   const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -78,6 +90,8 @@ export default function ChatPage() {
   const isLoadingOlderRef = useRef(false);
   const prevRoomRef = useRef(null);
   const emojiPickerRef = useRef(null);
+  const loadedForRoomRef = useRef(null);
+  const coinPickerRef = useRef(null);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
@@ -143,11 +157,8 @@ export default function ChatPage() {
           } else if (data.type === 'reaction') {
             setMessages(prev => prev.map(m => {
               if (m.id !== data.payload.messageId) return m;
-              const reactions = [...(m.reactions || [])];
-              if (data.payload.removed) {
-                return { ...m, reactions: reactions.filter(r => !(r.userWallet === data.payload.userWallet && r.reaction === data.payload.reaction)) };
-              }
-              if (!reactions.some(r => r.userWallet === data.payload.userWallet && r.reaction === data.payload.reaction)) {
+              let reactions = (m.reactions || []).filter(r => r.userWallet !== data.payload.userWallet);
+              if (!data.payload.removed) {
                 reactions.push({ reaction: data.payload.reaction, userWallet: data.payload.userWallet });
               }
               return { ...m, reactions };
@@ -231,6 +242,7 @@ export default function ChatPage() {
         setHasMore(data.hasMore);
       } else {
         setMessages(data.messages.slice(-MAX_ROOM_MESSAGES));
+        loadedForRoomRef.current = roomId;
         setHasMore(data.hasMore);
         if (data.readReceipts) setReadReceipts(data.readReceipts);
         setTimeout(() => scrollToBottom('instant'), 10);
@@ -246,18 +258,21 @@ export default function ChatPage() {
   useEffect(() => {
     if (!moniker) return;
     lastActiveRoomRef.current = active.id;
+    localStorage.setItem('mememint_chat_room', active.id);
     setUnreadMap(prev => ({ ...prev, [active.id]: 0 }));
     setNewMsgCount(0);
     setShowNewMsgPill(false);
 
     const cached = roomCacheRef.current.get(active.id);
-    if (cached && cached.messages.length > 0) {
+    if (cached && cached.messages.length > 0 && cached.roomId === active.id) {
       setMessages(cached.messages);
       setHasMore(cached.hasMore);
+      loadedForRoomRef.current = active.id;
       setTimeout(() => scrollToBottom('instant'), 10);
       setLoading(false);
       fetchMessages(active.id, { after: cached.messages[cached.messages.length - 1]?.createdAt });
     } else {
+      loadedForRoomRef.current = active.id;
       fetchMessages(active.id);
     }
 
@@ -266,7 +281,9 @@ export default function ChatPage() {
   }, [moniker, active.id, connectWs, fetchMessages, scrollToBottom]);
 
   useEffect(() => {
-    roomCacheRef.current.set(active.id, { messages, hasMore });
+    if (loadedForRoomRef.current === active.id) {
+      roomCacheRef.current.set(active.id, { roomId: active.id, messages, hasMore });
+    }
   }, [messages, hasMore, active.id]);
 
   useEffect(() => {
@@ -282,6 +299,19 @@ export default function ChatPage() {
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, [isNearBottom]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (showEmojiPicker && emojiPickerRef.current && !emojiPickerRef.current.contains(e.target) && !e.target.closest('.composer-emoji-btn')) {
+        setShowEmojiPicker(false);
+      }
+      if (showCoinPicker && coinPickerRef.current && !coinPickerRef.current.contains(e.target) && !e.target.closest('.composer-coin-btn')) {
+        setShowCoinPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showEmojiPicker, showCoinPicker]);
 
   const handleLoadOlder = useCallback(() => {
     if (loadingMore || !hasMore || messages.length === 0) return;
@@ -410,6 +440,50 @@ export default function ChatPage() {
   const connectedCount = connectedUsers.length;
 
   const lastReadByOthers = readReceipts.filter(r => r.userWallet !== moniker);
+  const { token } = useAuth();
+
+  const fetchUserCoins = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/tokens/mine', { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && Array.isArray(data.tokens)) setUserTokens(data.tokens);
+    } catch {}
+  }, [token]);
+
+  const handleSendCoinCard = useCallback((coin) => {
+    const payload = {
+      mint: coin.mint_address,
+      name: coin.name,
+      symbol: coin.symbol,
+      image: coin.image,
+      liquidity: {
+        curveProgress: coin.bonding_curve_progress || 0,
+        solAccumulated: coin.sol_accumulated || 0,
+        solTarget: coin.sol_target || 85,
+        amm: coin.amm || null,
+        poolStatus: coin.pool_status || 'curve',
+        isMigrated: coin.is_migrated === 1,
+      },
+    };
+    const msgText = JSON.stringify(payload);
+
+    if (isConnected && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'chat_message', message: msgText, userWallet: moniker, messageType: 'coin_card' }));
+    } else {
+      fetch(`/api/chat/${active.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userWallet: moniker, message: msgText, messageType: 'coin_card' }),
+      });
+    }
+    setShowCoinPicker(false);
+  }, [isConnected, moniker, active.id]);
+
+  useEffect(() => {
+    if (showCoinPicker) fetchUserCoins();
+  }, [showCoinPicker, fetchUserCoins]);
 
   return (
     <AuthGuard>
@@ -527,7 +601,24 @@ export default function ChatPage() {
                         {msg.userWallet}
                       </div>
                       <div className="bubble-content-wrap">
-                        <div className={`bubble-content-text`}>{msg.message}</div>
+                        {msg.messageType === 'coin_card' ? (() => {
+                          let card;
+                          try { card = JSON.parse(msg.message); } catch { return <div className="bubble-content-text">{msg.message}</div>; }
+                          const liq = card.liquidity || {};
+                          return (
+                            <a href={`/token/${card.mint}`} target="_blank" rel="noopener noreferrer" className={`coin-card-bubble ${isSelf ? 'coin-card-self' : ''}`}>
+                              {card.image && <img src={card.image} alt={card.symbol} className="coin-card-image" />}
+                              <div className="coin-card-info">
+                                <div className="coin-card-name">{card.name}</div>
+                                <div className="coin-card-symbol">{card.symbol}</div>
+                                <div className="coin-card-liquidity">
+                                  {liq.isMigrated ? <span className="coin-card-badge migrated">Migrated</span> : <span className="coin-card-badge curve">Curve {Math.round((liq.curveProgress || 0) * 100)}%</span>}
+                                  <span className="coin-card-sol">{liq.solAccumulated?.toFixed(1) || '0'}/{liq.solTarget || 85} SOL</span>
+                                </div>
+                              </div>
+                            </a>
+                          );
+                        })() : <div className="bubble-content-text">{msg.message}</div>}
                         <div className="bubble-actions-row">
                           <button
                             type="button"
@@ -586,7 +677,36 @@ export default function ChatPage() {
           </div>
 
           <form className="chat-composer-form" onSubmit={handleSend}>
+            <button type="button" className="composer-emoji-btn" onClick={() => setShowEmojiPicker(!showEmojiPicker)} aria-label="Emoji">😀</button>
+            {showEmojiPicker && (
+              <div className="composer-emoji-popover" ref={emojiPickerRef}>
+                {REACTION_EMOJIS.map(emoji => (
+                  <button key={emoji} type="button" className="emoji-insert-item" onClick={() => { setMessage(prev => prev + emoji); setShowEmojiPicker(false); }}>{emoji}</button>
+                ))}
+              </div>
+            )}
             <input type="text" className="composer-input-field" placeholder={`Message #${active.name}...`} value={message} onChange={(e) => handleTyping(e.target.value)} required />
+            <button type="button" className="composer-coin-btn" onClick={() => setShowCoinPicker(!showCoinPicker)} aria-label="Share coin">🪙</button>
+            {showCoinPicker && (
+              <div className="coin-picker-modal" ref={coinPickerRef}>
+                <div className="coin-picker-header">
+                  <span className="coin-picker-title">Share a Coin</span>
+                  <button type="button" className="coin-picker-close" onClick={() => setShowCoinPicker(false)}>✕</button>
+                </div>
+                <div className="coin-picker-list">
+                  {userTokens.length === 0 && <div className="coin-picker-empty">No coins created yet</div>}
+                  {userTokens.map(coin => (
+                    <button key={coin.mint_address} type="button" className="coin-picker-item" onClick={() => handleSendCoinCard(coin)}>
+                      {coin.image && <img src={coin.image} alt={coin.symbol} className="coin-picker-thumb" />}
+                      <div className="coin-picker-item-info">
+                        <div className="coin-picker-item-name">{coin.name}</div>
+                        <div className="coin-picker-item-sym">{coin.symbol}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <button type="submit" className="composer-send-btn" aria-label="Send message">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
@@ -704,7 +824,42 @@ export default function ChatPage() {
         .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes typingBounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
         .typing-label { font-size: 11px; color: var(--muted); }
-        .chat-composer-form { padding: var(--space-4) var(--space-6); border-top: 1px solid var(--hairline); background: var(--bg-canvas); display: flex; gap: var(--space-3); align-items: center; flex-shrink: 0; }
+        .composer-emoji-btn { background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 4px; border-radius: var(--radius-xs); flex-shrink: 0; }
+        .composer-emoji-btn:hover { background: var(--bg-surface-soft); }
+        .composer-emoji-popover { display: flex; gap: 2px; background: var(--bg-canvas); border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); position: absolute; bottom: 60px; left: var(--space-6); z-index: 20; flex-wrap: wrap; max-width: 240px; }
+        .emoji-insert-item { background: transparent; border: none; font-size: 20px; cursor: pointer; padding: 4px 6px; border-radius: 4px; }
+        .emoji-insert-item:hover { background: var(--bg-surface-soft); }
+        .composer-coin-btn { background: transparent; border: none; font-size: 18px; cursor: pointer; padding: 4px; border-radius: var(--radius-xs); flex-shrink: 0; }
+        .composer-coin-btn:hover { background: var(--bg-surface-soft); }
+        .coin-picker-modal { position: absolute; bottom: 60px; right: var(--space-6); width: 260px; background: var(--bg-canvas); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 20; overflow: hidden; }
+        .coin-picker-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--hairline); background: var(--bg-surface-soft); }
+        .coin-picker-title { font-size: 12px; font-weight: 800; color: var(--ink); }
+        .coin-picker-close { background: none; border: none; font-size: 14px; cursor: pointer; color: var(--muted); }
+        .coin-picker-list { max-height: 220px; overflow-y: auto; padding: 4px; }
+        .coin-picker-empty { padding: 16px; text-align: center; font-size: 12px; color: var(--muted); }
+        .coin-picker-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: none; background: transparent; border-radius: var(--radius-xs); cursor: pointer; text-align: left; }
+        .coin-picker-item:hover { background: var(--bg-surface-soft); }
+        .coin-picker-thumb { width: 32px; height: 32px; border-radius: var(--radius-xs); object-fit: cover; border: 1px solid var(--hairline); }
+        .coin-picker-item-info { min-width: 0; flex: 1; }
+        .coin-picker-item-name { font-size: 12px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .coin-picker-item-sym { font-size: 10px; color: var(--muted); }
+        .coin-card-bubble { display: flex; gap: 10px; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); border: 1px solid var(--hairline); background: var(--bg-surface-soft); text-decoration: none; color: var(--ink); max-width: 300px; transition: transform 0.1s; cursor: pointer; border-top-left-radius: 4px; }
+        .coin-card-bubble:hover { transform: translateY(-1px); }
+        .coin-card-self { background: var(--ink); border-color: var(--ink); color: #fff; }
+        .coin-card-self .coin-card-symbol, .coin-card-self .coin-card-liquidity { color: rgba(255,255,255,0.6); }
+        .coin-card-image { width: 48px; height: 48px; border-radius: var(--radius-xs); object-fit: cover; border: 1px solid var(--hairline); flex-shrink: 0; }
+        .coin-card-self .coin-card-image { border-color: rgba(255,255,255,0.1); }
+        .coin-card-info { min-width: 0; }
+        .coin-card-name { font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .coin-card-symbol { font-size: 11px; color: var(--muted); font-weight: 600; }
+        .coin-card-liquidity { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+        .coin-card-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: var(--radius-pill); text-transform: uppercase; letter-spacing: 0.03em; }
+        .coin-card-badge.curve { background: rgba(245,158,11,0.12); color: #f59e0b; }
+        .coin-card-badge.migrated { background: rgba(34,197,94,0.12); color: #22c55e; }
+        .coin-card-self .coin-card-badge.curve { background: rgba(245,158,11,0.2); color: #f59e0b; }
+        .coin-card-self .coin-card-badge.migrated { background: rgba(34,197,94,0.2); color: #22c55e; }
+        .coin-card-sol { font-size: 10px; color: var(--muted-soft); font-weight: 600; }
+        .chat-composer-form { padding: var(--space-4) var(--space-6); border-top: 1px solid var(--hairline); background: var(--bg-canvas); display: flex; gap: var(--space-3); align-items: center; flex-shrink: 0; position: relative; }
         .composer-input-field { flex: 1; background: var(--bg-canvas); border: 1px solid var(--hairline); border-radius: var(--radius-xl); padding: 10px 18px; font-size: 13px; outline: none; color: var(--ink); }
         .composer-input-field:focus { border-color: var(--brand-mint); box-shadow: 0 0 0 3px rgba(60,255,208,0.1); }
         .composer-send-btn { display: inline-flex; align-items: center; justify-content: center; height: 38px; width: 38px; border-radius: 50%; background: var(--ink); color: var(--brand-mint); border: 1px solid var(--ink); cursor: pointer; flex-shrink: 0; transition: transform 0.1s; }
