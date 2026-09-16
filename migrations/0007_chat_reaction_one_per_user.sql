@@ -1,16 +1,6 @@
 -- Migration 0007: One reaction per user per message
--- Deduplicate existing rows keeping the earliest reaction per (message_id, user_id),
--- then enforce UNIQUE(message_id, user_id) via table rebuild.
+-- Rebuild chat_reactions with UNIQUE(message_id, user_id), keeping earliest row per group.
 
--- Step 1: Find and delete duplicate rows, keeping the earliest by created_at
-DELETE FROM chat_reactions
-WHERE rowid NOT IN (
-  SELECT MIN(rowid)
-  FROM chat_reactions
-  GROUP BY message_id, user_id
-);
-
--- Step 2: Recreate table with UNIQUE(message_id, user_id)
 CREATE TABLE chat_reactions_new (
   id TEXT PRIMARY KEY,
   message_id TEXT NOT NULL,
@@ -22,8 +12,13 @@ CREATE TABLE chat_reactions_new (
 );
 
 INSERT INTO chat_reactions_new (id, message_id, user_id, reaction, created_at)
-  SELECT id, message_id, user_id, reaction, created_at
-  FROM chat_reactions;
+  SELECT cr.id, cr.message_id, cr.user_id, cr.reaction, cr.created_at
+  FROM chat_reactions cr
+  INNER JOIN (
+    SELECT message_id, user_id, MIN(rowid) AS min_rowid
+    FROM chat_reactions
+    GROUP BY message_id, user_id
+  ) dup ON cr.rowid = dup.min_rowid;
 
 DROP TABLE chat_reactions;
 ALTER TABLE chat_reactions_new RENAME TO chat_reactions;

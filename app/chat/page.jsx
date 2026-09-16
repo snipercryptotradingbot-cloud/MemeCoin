@@ -39,8 +39,9 @@ function getAvatarColor(wallet) {
 function getInitials(wallet) {
   if (!wallet) return '?';
   if (wallet.startsWith('Guest_')) return 'G';
-  if (wallet.length > 8) return wallet.slice(0, 2).toUpperCase();
-  return wallet.slice(0, 1).toUpperCase();
+  const name = wallet.startsWith('@') ? wallet.slice(1) : wallet;
+  if (name.length > 8) return name.slice(0, 2).toUpperCase();
+  return name.slice(0, 1).toUpperCase();
 }
 
 export default function ChatPage() {
@@ -62,6 +63,7 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomDesc, setNewRoomDesc] = useState('');
+  const [newRoomType, setNewRoomType] = useState('public');
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [chatError, setChatError] = useState('');
   const [connectedUsers, setConnectedUsers] = useState([]);
@@ -94,6 +96,8 @@ export default function ChatPage() {
   const coinPickerRef = useRef(null);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+
+  const { user, token, getAuthHeaders } = useAuth();
 
   const isNearBottom = useCallback(() => {
     const el = messagesContainerRef.current;
@@ -192,14 +196,19 @@ export default function ChatPage() {
   }, [moniker]);
 
   useEffect(() => {
-    const savedMoniker = localStorage.getItem('mememint_moniker');
-    if (savedMoniker) setMoniker(savedMoniker);
-    else {
-      const n = `Guest_${Math.floor(Math.random() * 9000) + 1000}`;
-      setMoniker(n);
-      localStorage.setItem('mememint_moniker', n);
+    if (user && user.username) {
+      setMoniker(user.username);
+      localStorage.setItem('mememint_moniker', user.username);
+    } else {
+      const savedMoniker = localStorage.getItem('mememint_moniker');
+      if (savedMoniker) setMoniker(savedMoniker);
+      else {
+        const n = `Guest_${Math.floor(Math.random() * 9000) + 1000}`;
+        setMoniker(n);
+        localStorage.setItem('mememint_moniker', n);
+      }
     }
-  }, []);
+  }, [user]);
 
   const fetchMessages = useCallback(async (roomId, { before, after } = {}) => {
     if (!before && !after) setLoading(true);
@@ -390,44 +399,73 @@ export default function ChatPage() {
   const handleCreateRoom = async (e) => {
     e.preventDefault();
     if (!newRoomName.trim()) return;
+    if (!user) return setChatError('Sign in to create rooms');
     const slug = newRoomName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     if (!slug || rooms.some(r => r.id === slug)) return;
 
-    const room = { id: slug, name: newRoomName.trim(), desc: newRoomDesc.trim() || `Discussion room for #${newRoomName}`, badge: newRoomName.trim().charAt(0).toUpperCase(), online: 1, members: '1' };
+    const room = { id: slug, name: newRoomName.trim(), desc: newRoomDesc.trim() || `Discussion room for #${newRoomName}`, badge: newRoomName.trim().charAt(0).toUpperCase(), online: 0, members: '0', roomType: newRoomType, isMember: true, createdBy: user.username };
 
     try {
-      await fetch('/api/chat/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: slug, name: room.name, topic: newRoomDesc.trim(), createdBy: moniker }) });
+      await fetch('/api/chat/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ id: slug, name: room.name, topic: newRoomDesc.trim(), roomType: newRoomType }) });
     } catch {}
 
     setRooms(prev => prev.some(r => r.id === slug) ? prev : [...prev, room]);
     setActive(room);
     setNewRoomName('');
     setNewRoomDesc('');
+    setNewRoomType('public');
     setShowCreateRoom(false);
+  };
+
+  const handleJoinRoom = async (roomId) => {
+    if (!user) return setChatError('Sign in to join rooms');
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/join`, { method: 'POST', headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setRooms(prev => prev.map(r => r.id === roomId ? { ...r, isMember: true, members: String((parseInt(r.members) || 0) + 1) } : r));
+        setActive(rooms.find(r => r.id === roomId) || active);
+      }
+    } catch {}
+  };
+
+  const handleLeaveRoom = async (roomId) => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/leave`, { method: 'DELETE', headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setRooms(prev => prev.map(r => r.id === roomId ? { ...r, isMember: false, members: String(Math.max(0, (parseInt(r.members) || 1) - 1)) } : r));
+        if (active.id === roomId) setActive(DEFAULT_ROOMS[0]);
+      }
+    } catch {}
   };
 
   const fetchRooms = useCallback(async () => {
     try {
-      const res = await fetch('/api/chat/rooms');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch('/api/chat/rooms', { headers });
       if (!res.ok) return;
       const data = await res.json();
       if (data.success && Array.isArray(data.rooms)) {
         const dbRooms = data.rooms.map(r => ({
           id: r.id, name: r.name, desc: r.topic || `Discussion room for #${r.name}`,
           badge: (r.name || r.id || '?').charAt(0).toUpperCase(),
-          online: r.member_count || 1, members: String(r.member_count || 1),
+          online: r.member_count || 0, members: String(r.member_count || 0),
+          roomType: r.roomType || 'public', isMember: r.isMember !== false,
+          createdBy: r.createdBy,
         }));
         setRooms(prev => {
           const combined = DEFAULT_ROOMS.map(dr => {
             const match = dbRooms.find(r => r.id === dr.id);
-            return match || dr;
+            return match || { ...dr, roomType: 'public', isMember: true };
           });
           dbRooms.forEach(r => { if (!combined.some(c => c.id === r.id)) combined.push(r); });
           return combined;
         });
       }
     } catch {}
-  }, []);
+  }, [token]);
 
   useEffect(() => { fetchRooms(); }, [fetchRooms]);
 
@@ -440,7 +478,6 @@ export default function ChatPage() {
   const connectedCount = connectedUsers.length;
 
   const lastReadByOthers = readReceipts.filter(r => r.userWallet !== moniker);
-  const { token } = useAuth();
 
   const fetchUserCoins = useCallback(async () => {
     if (!token) return;
@@ -504,14 +541,19 @@ export default function ChatPage() {
 
           <div className="create-room-box">
             {!showCreateRoom ? (
-              <button className="create-room-trigger-btn" onClick={() => setShowCreateRoom(true)}>+ Create New Room</button>
+              <button className="create-room-trigger-btn" onClick={() => { if (!user) return setChatError('Sign in to create rooms'); setShowCreateRoom(true); }}>+ Create New Room</button>
             ) : (
               <form onSubmit={handleCreateRoom} className="create-room-form">
                 <input type="text" className="chat-input-field" placeholder="Room name (e.g. SOL-MOON)" value={newRoomName} onChange={e => setNewRoomName(e.target.value)} maxLength={15} required />
                 <input type="text" className="chat-input-field" placeholder="Short description" value={newRoomDesc} onChange={e => setNewRoomDesc(e.target.value)} maxLength={50} />
+                <div className="room-type-toggle">
+                  <button type="button" className={`room-type-btn ${newRoomType === 'public' ? 'is-active' : ''}`} onClick={() => setNewRoomType('public')}>🌍 Public</button>
+                  <button type="button" className={`room-type-btn ${newRoomType === 'private' ? 'is-active' : ''}`} onClick={() => setNewRoomType('private')}>🔒 Private</button>
+                </div>
+                {newRoomType === 'private' && <div className="room-type-hint">Only members you add can join</div>}
                 <div className="form-actions-row">
                   <button type="submit" className="room-action-btn submit-btn">Create</button>
-                  <button type="button" className="room-action-btn cancel-btn" onClick={() => setShowCreateRoom(false)}>Cancel</button>
+                  <button type="button" className="room-action-btn cancel-btn" onClick={() => { setShowCreateRoom(false); setNewRoomType('public'); }}>Cancel</button>
                 </div>
               </form>
             )}
@@ -519,12 +561,16 @@ export default function ChatPage() {
 
           <div className="chat-room-list" role="list">
             {filteredRooms.map(room => (
-              <button key={room.id} type="button" className={`room-item-row ${active.id === room.id ? 'is-active' : ''}`} onClick={() => { setActive(room); setSidebarOpen(false); }}>
-                <div className="room-item-badge" style={{ background: getAvatarColor(room.id), color: '#fff' }}>{room.badge}</div>
+              <button key={room.id} type="button" className={`room-item-row ${active.id === room.id ? 'is-active' : ''} ${room.roomType === 'private' && !room.isMember ? 'is-private-locked' : ''}`} onClick={() => { setActive(room); setSidebarOpen(false); }}>
+                <div className="room-item-badge" style={{ background: getAvatarColor(room.id), color: '#fff' }}>{room.roomType === 'private' ? '🔒' : room.badge}</div>
                 <div className="room-item-content">
-                  <div className="room-item-name"># {room.name}</div>
+                  <div className="room-item-name">{room.roomType === 'private' ? '' : '# '}{room.name}</div>
                   <div className="room-item-desc">{room.desc}</div>
+                  {room.roomType === 'private' && <div className="room-item-meta">{room.members} member{room.members !== '1' ? 's' : ''}</div>}
                 </div>
+                {room.roomType === 'private' && !room.isMember && user && (
+                  <button type="button" className="room-join-btn" onClick={(e) => { e.stopPropagation(); handleJoinRoom(room.id); }}>Join</button>
+                )}
                 {unreadMap[room.id] > 0 && active.id !== room.id && (
                   <div className="unread-badge">{unreadMap[room.id]}</div>
                 )}
@@ -536,8 +582,12 @@ export default function ChatPage() {
             <div className="moniker-settings">
               <span className="user-icon-circle" style={{ background: getAvatarColor(moniker) }}>{getInitials(moniker)}</span>
               <div className="moniker-field-wrap">
-                <div className="moniker-label">Your Nickname</div>
-                <input type="text" className="moniker-input-box" value={moniker} onChange={e => { setMoniker(e.target.value); localStorage.setItem('mememint_moniker', e.target.value); }} placeholder="Nickname" maxLength={15} />
+                <div className="moniker-label">{user ? 'Your Handle' : 'Your Nickname'}</div>
+                {user ? (
+                  <div className="moniker-handle-display">@{user.username}</div>
+                ) : (
+                  <input type="text" className="moniker-input-box" value={moniker} onChange={e => { setMoniker(e.target.value); localStorage.setItem('mememint_moniker', e.target.value); }} placeholder="Nickname" maxLength={15} />
+                )}
               </div>
             </div>
             <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
@@ -748,6 +798,15 @@ export default function ChatPage() {
         .room-item-row { width: 100%; text-align: left; padding: 10px var(--space-3); border-radius: var(--radius-sm); background: transparent; border: 1px solid transparent; cursor: pointer; display: flex; align-items: center; gap: var(--space-3); transition: background-color 0.15s; position: relative; }
         .room-item-row:hover { background: rgba(0,0,0,0.03); }
         .room-item-row.is-active { background: var(--bg-canvas); border-color: var(--hairline); }
+        .room-item-row.is-private-locked { opacity: 0.7; }
+        .room-item-meta { font-size: 10px; color: var(--muted-soft); margin-top: 2px; }
+        .room-join-btn { background: var(--brand-mint); color: var(--ink); border: none; border-radius: var(--radius-xs); padding: 3px 8px; font-size: 10px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+        .room-join-btn:hover { opacity: 0.8; }
+        .room-type-toggle { display: flex; gap: 4px; }
+        .room-type-btn { flex: 1; padding: 6px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--bg-canvas); font-size: 11px; cursor: pointer; color: var(--muted); transition: all 0.15s; }
+        .room-type-btn.is-active { background: var(--ink); color: var(--brand-mint); border-color: var(--ink); }
+        .room-type-hint { font-size: 10px; color: var(--muted-soft); font-style: italic; }
+        .moniker-handle-display { font-size: 13px; font-weight: 700; color: var(--ink); padding: 2px 0; }
         .room-item-badge { width: 28px; height: 28px; border-radius: var(--radius-xs); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; flex-shrink: 0; }
         .room-item-content { min-width: 0; flex: 1; }
         .room-item-name { font-weight: 700; font-size: 13px; color: var(--body-strong); }

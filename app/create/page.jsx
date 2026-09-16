@@ -15,6 +15,7 @@ import { useToast } from '@/app/components/Toast';
 import { uploadImage, uploadMetadata } from '@/app/lib/pinata';
 import { createMintTransaction, createMetadataTransaction } from '@/app/lib/createToken';
 import { formatNumber } from '@/app/lib/solana';
+import { useAuth } from '@/app/providers/AuthProvider';
 
 const WIZARD_STEPS = ['Connect Wallet', 'Token Details', 'Review & Launch'];
 
@@ -23,6 +24,7 @@ export default function CreatePage() {
   const { connection } = useAppKitConnection();
   const { walletProvider } = useAppKitProvider('solana');
   const { network } = useNetwork();
+  const { getAuthHeaders } = useAuth();
 
   const token = useToken();
   const toast = useToast();
@@ -134,15 +136,14 @@ export default function CreatePage() {
       // Small delay for UX
       await new Promise((r) => setTimeout(r, 1000));
 
-      token.setSuccess(mintResult.mintAddress, mintResult.txSignature);
-
       // Record token in D1 for My Tokens / social features
+      let d1Success = false;
       try {
-        const savedToken = typeof window !== 'undefined' ? localStorage.getItem('mememint_token') : null;
-        if (savedToken) {
+        const authHeaders = getAuthHeaders();
+        if (authHeaders.Authorization) {
           const recordRes = await fetch('/api/tokens/record', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${savedToken}` },
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify({
               mint_address: mintResult.mintAddress,
               name: token.name,
@@ -158,14 +159,25 @@ export default function CreatePage() {
               telegram: token.telegram || '',
             }),
           });
-          if (!recordRes.ok) {
+          if (recordRes.ok) {
+            d1Success = true;
+          } else {
             const err = await recordRes.json().catch(() => ({}));
-            toast.warning('Record Note', err.error || 'Token created but could not be recorded. It will appear on your dashboard shortly.');
+            console.error('D1 record failed:', err.error || recordRes.status);
           }
+        } else {
+          console.error('No auth token available for D1 record');
         }
       } catch (e) {
-        toast.warning('Record Note', 'Token created but could not be recorded. It will appear on your dashboard shortly.');
+        console.error('D1 record error:', e);
       }
+
+      if (!d1Success) {
+        token.setError('Token minted but could not be saved to database. Please contact support or try creating again.');
+        return;
+      }
+
+      token.setSuccess(mintResult.mintAddress, mintResult.txSignature);
 
       // Store in localStorage for explore page
       try {
