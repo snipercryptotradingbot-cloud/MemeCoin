@@ -163,7 +163,7 @@ export default function CreatePage() {
             d1Success = true;
           } else {
             const err = await recordRes.json().catch(() => ({}));
-            console.error('D1 record failed:', err.detail || err.error || recordRes.status);
+            console.error('D1 record failed:', recordRes.status, JSON.stringify(err));
           }
         } else {
           console.error('No auth token available for D1 record');

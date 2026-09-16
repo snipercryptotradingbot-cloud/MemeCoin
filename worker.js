@@ -1895,9 +1895,17 @@ async function tokensHandler(request, env) {
 
     if (env.DB) {
       try {
-        await env.DB.prepare(
-          'INSERT OR IGNORE INTO users (id, wallet_address, role, created_at) VALUES (?, ?, ?, ?)'
-        ).bind(payload.sub, payload.sub, 'user', now).run();
+        const existingUser = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(payload.sub).first();
+        if (!existingUser) {
+          await env.DB.prepare(
+            'INSERT INTO users (id, wallet_address, role, created_at) VALUES (?, ?, ?, ?)'
+          ).bind(payload.sub, payload.sub, 'user', now).run();
+        }
+      } catch (e) {
+        console.error('ensure user failed:', e.message);
+      }
+
+      try {
         await env.DB.prepare(
           `INSERT INTO tokens (id, mint_address, name, symbol, creator_id, image, metadata_uri, network, decimals, total_supply, description, website, twitter, telegram, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
