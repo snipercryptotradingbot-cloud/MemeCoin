@@ -375,12 +375,24 @@ async function chatRoomCRUD(request, env) {
       let rooms = results || [];
       if (userId) {
         const { results: memberships } = await env.DB.prepare(
-          'SELECT room_id FROM chat_room_members WHERE user_id = ?'
+          'SELECT room_id, role FROM chat_room_members WHERE user_id = ?'
         ).bind(userId).all();
-        const memberRoomIds = new Set((memberships || []).map(m => m.room_id));
-        rooms = rooms.map(r => ({ ...r, isMember: r.roomType === 'public' || memberRoomIds.has(r.id) }));
+        const memberMap = new Map((memberships || []).map(m => [m.room_id, m.role]));
+        rooms = rooms.map(r => ({ ...r, role: memberMap.get(r.id) || null, isMember: r.roomType === 'public' || memberMap.has(r.id) }));
       } else {
-        rooms = rooms.map(r => ({ ...r, isMember: r.roomType === 'public' }));
+        rooms = rooms.map(r => ({ ...r, role: null, isMember: r.roomType === 'public' }));
+      }
+
+      const ownerRoomIds = rooms.filter(r => r.role === 'owner' || r.role === 'admin').map(r => r.id);
+      if (ownerRoomIds.length > 0) {
+        const placeholders = ownerRoomIds.map(() => '?').join(',');
+        const { results: pendingCounts } = await env.DB.prepare(
+          `SELECT room_id as roomId, COUNT(*) as count FROM chat_room_members WHERE room_id IN (${placeholders}) AND role = 'pending' GROUP BY room_id`
+        ).bind(...ownerRoomIds).all();
+        const pendingMap = new Map((pendingCounts || []).map(p => [p.roomId, p.count]));
+        rooms = rooms.map(r => ({ ...r, pendingCount: pendingMap.get(r.id) || 0 }));
+      } else {
+        rooms = rooms.map(r => ({ ...r, pendingCount: 0 }));
       }
 
       return json({ success: true, rooms });
@@ -532,6 +544,77 @@ async function chatRoomCRUD(request, env) {
 
         await env.DB.prepare('DELETE FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(roomId, target.user_id).run();
         await env.DB.prepare('UPDATE chat_rooms SET member_count = MAX(0, member_count - 1) WHERE id = ?').bind(roomId).run();
+
+        return json({ success: true });
+      } catch (err) {
+        return json({ success: false, error: err.message }, 500);
+      }
+    }
+
+    // GET /api/chat/rooms/:roomId/requests — list pending join requests
+    if (sub === 'requests' && request.method === 'GET') {
+      const payload = await verifyAuth(request, env);
+      if (!payload) return json({ error: 'Auth required' }, 401);
+
+      try {
+        const membership = await env.DB.prepare('SELECT role FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(roomId, payload.sub).first();
+        if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
+          return json({ error: 'Only room owners/admins can view requests' }, 403);
+        }
+
+        const { results } = await env.DB.prepare(
+          'SELECT user_id as userId, username, role, joined_at as joinedAt FROM chat_room_members WHERE room_id = ? AND role = ? ORDER BY joined_at ASC'
+        ).bind(roomId, 'pending').all();
+        return json({ success: true, requests: results || [] });
+      } catch (err) {
+        return json({ success: false, error: err.message }, 500);
+      }
+    }
+
+    // POST /api/chat/rooms/:roomId/approve/:userId — approve a pending request
+    const approveMatch = sub.match(/^approve\/(.+)$/);
+    if (approveMatch && request.method === 'POST') {
+      const payload = await verifyAuth(request, env);
+      if (!payload) return json({ error: 'Auth required' }, 401);
+
+      try {
+        const membership = await env.DB.prepare('SELECT role FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(roomId, payload.sub).first();
+        if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
+          return json({ error: 'Only room owners/admins can approve requests' }, 403);
+        }
+
+        const targetUserId = approveMatch[1];
+        const target = await env.DB.prepare('SELECT role FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(roomId, targetUserId).first();
+        if (!target) return json({ error: 'Request not found' }, 404);
+        if (target.role !== 'pending') return json({ error: 'User is not pending' }, 400);
+
+        await env.DB.prepare('UPDATE chat_room_members SET role = ? WHERE room_id = ? AND user_id = ?').bind('member', roomId, targetUserId).run();
+        await env.DB.prepare('UPDATE chat_rooms SET member_count = member_count + 1 WHERE id = ?').bind(roomId).run();
+
+        return json({ success: true });
+      } catch (err) {
+        return json({ success: false, error: err.message }, 500);
+      }
+    }
+
+    // POST /api/chat/rooms/:roomId/reject/:userId — reject a pending request
+    const rejectMatch = sub.match(/^reject\/(.+)$/);
+    if (rejectMatch && request.method === 'POST') {
+      const payload = await verifyAuth(request, env);
+      if (!payload) return json({ error: 'Auth required' }, 401);
+
+      try {
+        const membership = await env.DB.prepare('SELECT role FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(roomId, payload.sub).first();
+        if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
+          return json({ error: 'Only room owners/admins can reject requests' }, 403);
+        }
+
+        const targetUserId = rejectMatch[1];
+        const target = await env.DB.prepare('SELECT role FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(roomId, targetUserId).first();
+        if (!target) return json({ error: 'Request not found' }, 404);
+        if (target.role !== 'pending') return json({ error: 'User is not pending' }, 400);
+
+        await env.DB.prepare('DELETE FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(roomId, targetUserId).run();
 
         return json({ success: true });
       } catch (err) {
@@ -921,7 +1004,7 @@ export class ChatRoom {
     } catch {}
   }
 
-  async _checkMembership(userWallet) {
+  async _checkMembership(userWallet, requireWrite) {
     try {
       const room = await this.env.DB.prepare('SELECT room_type FROM chat_rooms WHERE id = ?').bind(this.roomId).first();
       if (!room || room.room_type === 'public') return true;
@@ -930,7 +1013,9 @@ export class ChatRoom {
       if (!payload) return false;
 
       const member = await this.env.DB.prepare('SELECT role FROM chat_room_members WHERE room_id = ? AND user_id = ?').bind(this.roomId, payload.sub).first();
-      return member && ['owner', 'admin', 'member'].includes(member.role);
+      if (!member) return false;
+      if (requireWrite) return ['owner', 'admin', 'member'].includes(member.role);
+      return ['owner', 'admin', 'member', 'pending'].includes(member.role);
     } catch {
       return false;
     }
@@ -985,7 +1070,7 @@ export class ChatRoom {
 
     if (request.method === 'POST') {
       const userWallet = this.getUserIdFromRequest(request);
-      if (!(await this._checkMembership(userWallet))) {
+      if (!(await this._checkMembership(userWallet, true))) {
         return json({ error: 'Not a member of this private room' }, 403);
       }
       return this.postMessageRest(request);
@@ -1100,7 +1185,7 @@ export class ChatRoom {
         await this.env.DB.prepare(
           'UPDATE chat_rooms SET last_active_at = ? WHERE id = ?'
         ).bind(now, this.roomId).run();
-      } catch {}
+      } catch (e) { console.error('D1 INSERT handleChatMessage failed:', e.message); }
     }
 
     this.pushToCache(chatMessage);
@@ -1289,7 +1374,7 @@ export class ChatRoom {
       if (msgIds.length > 0) {
         const placeholders = msgIds.map(() => '?').join(',');
         const { results: reactions } = await this.env.DB.prepare(
-          `SELECT message_id as messageId, user_wallet as userWallet, reaction FROM chat_reactions WHERE message_id IN (${placeholders})`
+          `SELECT message_id as messageId, user_id as userWallet, reaction FROM chat_reactions WHERE message_id IN (${placeholders})`
         ).bind(...msgIds).all();
         for (const r of (reactions || [])) {
           if (!reactionsMap[r.messageId]) reactionsMap[r.messageId] = [];
@@ -1335,7 +1420,7 @@ export class ChatRoom {
         await this.env.DB.prepare(
           'UPDATE chat_rooms SET last_active_at = ? WHERE id = ?'
         ).bind(now, this.roomId).run();
-      } catch {}
+      } catch (e) { console.error('D1 INSERT postMessageRest failed:', e.message); }
     }
 
     const chatMsg = { id, userWallet, message, messageType, createdAt: now, reactions: [] };
@@ -1810,6 +1895,9 @@ async function tokensHandler(request, env) {
 
     if (env.DB) {
       try {
+        await env.DB.prepare(
+          'INSERT OR IGNORE INTO users (id, wallet_address, role, created_at) VALUES (?, ?, ?, ?)'
+        ).bind(payload.sub, payload.sub, 'user', now).run();
         await env.DB.prepare(
           `INSERT INTO tokens (id, mint_address, name, symbol, creator_id, image, metadata_uri, network, decimals, total_supply, description, website, twitter, telegram, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

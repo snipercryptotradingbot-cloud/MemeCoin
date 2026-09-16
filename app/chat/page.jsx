@@ -80,6 +80,8 @@ export default function ChatPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showCoinPicker, setShowCoinPicker] = useState(false);
   const [userTokens, setUserTokens] = useState([]);
+  const [showPendingPanel, setShowPendingPanel] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState([]);
 
   const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -322,6 +324,14 @@ export default function ChatPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showEmojiPicker, showCoinPicker]);
 
+  useEffect(() => {
+    if (active && user && (active.role === 'owner' || active.role === 'admin')) {
+      fetchPendingRequests(active.id);
+    } else {
+      setPendingRequests([]);
+    }
+  }, [active.id, active.role, user, fetchPendingRequests]);
+
   const handleLoadOlder = useCallback(() => {
     if (loadingMore || !hasMore || messages.length === 0) return;
     setLoadingMore(true);
@@ -423,7 +433,11 @@ export default function ChatPage() {
       const res = await fetch(`/api/chat/rooms/${roomId}/join`, { method: 'POST', headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success) {
-        setRooms(prev => prev.map(r => r.id === roomId ? { ...r, isMember: true, members: String((parseInt(r.members) || 0) + 1) } : r));
+        if (data.role === 'pending') {
+          setRooms(prev => prev.map(r => r.id === roomId ? { ...r, role: 'pending', isMember: true } : r));
+        } else {
+          setRooms(prev => prev.map(r => r.id === roomId ? { ...r, isMember: true, role: data.role || 'member', members: String((parseInt(r.members) || 0) + 1) } : r));
+        }
         setActive(rooms.find(r => r.id === roomId) || active);
       }
     } catch {}
@@ -441,6 +455,37 @@ export default function ChatPage() {
     } catch {}
   };
 
+  const fetchPendingRequests = useCallback(async (roomId) => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/requests`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) setPendingRequests(data.requests || []);
+    } catch {}
+  }, [user, token]);
+
+  const handleApproveUser = async (roomId, userId) => {
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/approve/${userId}`, { method: 'POST', headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setPendingRequests(prev => prev.filter(r => r.userId !== userId));
+        setRooms(prev => prev.map(r => r.id === roomId ? { ...r, members: String((parseInt(r.members) || 0) + 1), pendingCount: Math.max(0, (r.pendingCount || 1) - 1) } : r));
+      }
+    } catch {}
+  };
+
+  const handleRejectUser = async (roomId, userId) => {
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/reject/${userId}`, { method: 'POST', headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setPendingRequests(prev => prev.filter(r => r.userId !== userId));
+        setRooms(prev => prev.map(r => r.id === roomId ? { ...r, pendingCount: Math.max(0, (r.pendingCount || 1) - 1) } : r));
+      }
+    } catch {}
+  };
+
   const fetchRooms = useCallback(async () => {
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -453,7 +498,7 @@ export default function ChatPage() {
           badge: (r.name || r.id || '?').charAt(0).toUpperCase(),
           online: r.member_count || 0, members: String(r.member_count || 0),
           roomType: r.roomType || 'public', isMember: r.isMember !== false,
-          createdBy: r.createdBy,
+          createdBy: r.createdBy, role: r.role || null, pendingCount: r.pendingCount || 0,
         }));
         setRooms(prev => {
           const combined = DEFAULT_ROOMS.map(dr => {
@@ -568,8 +613,14 @@ export default function ChatPage() {
                   <div className="room-item-desc">{room.desc}</div>
                   {room.roomType === 'private' && <div className="room-item-meta">{room.members} member{room.members !== '1' ? 's' : ''}</div>}
                 </div>
-                {room.roomType === 'private' && !room.isMember && user && (
+                {room.roomType === 'private' && room.role === 'pending' && (
+                  <span className="room-pending-badge">Requested</span>
+                )}
+                {room.roomType === 'private' && !room.isMember && !room.role && user && (
                   <button type="button" className="room-join-btn" onClick={(e) => { e.stopPropagation(); handleJoinRoom(room.id); }}>Join</button>
+                )}
+                {room.roomType === 'private' && (room.role === 'owner' || room.role === 'admin') && (room.pendingCount || 0) > 0 && (
+                  <div className="room-pending-count">{room.pendingCount}</div>
                 )}
                 {unreadMap[room.id] > 0 && active.id !== room.id && (
                   <div className="unread-badge">{unreadMap[room.id]}</div>
@@ -611,6 +662,41 @@ export default function ChatPage() {
               </span>
             </div>
           </header>
+
+          {active.roomType === 'private' && (active.role === 'owner' || active.role === 'admin') && (
+            <div className="pending-requests-bar">
+              <button type="button" className="pending-requests-toggle" onClick={() => { setShowPendingPanel(!showPendingPanel); if (!showPendingPanel) fetchPendingRequests(active.id); }}>
+                Pending Requests {pendingRequests.length > 0 ? `(${pendingRequests.length})` : ''}
+              </button>
+              {showPendingPanel && (
+                <div className="pending-requests-panel">
+                  {pendingRequests.length === 0 ? (
+                    <div className="pending-empty">No pending requests</div>
+                  ) : (
+                    pendingRequests.map(req => (
+                      <div key={req.userId} className="pending-request-row">
+                        <div className="pending-request-info">
+                          <span className="pending-request-name">@{req.username}</span>
+                          <span className="pending-request-time">{new Date(req.joinedAt).toLocaleString()}</span>
+                        </div>
+                        <div className="pending-request-actions">
+                          <button type="button" className="approve-btn" onClick={() => handleApproveUser(active.id, req.userId)}>Approve</button>
+                          <button type="button" className="reject-btn" onClick={() => handleRejectUser(active.id, req.userId)}>Reject</button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {active.roomType === 'private' && active.role === 'pending' && (
+            <div className="pending-notice">
+              <div className="pending-notice-icon">⏳</div>
+              <div className="pending-notice-text">Your join request is pending approval from the room owner.</div>
+            </div>
+          )}
 
           <div
             className="chat-messages-container"
@@ -923,6 +1009,27 @@ export default function ChatPage() {
         .composer-input-field:focus { border-color: var(--brand-mint); box-shadow: 0 0 0 3px rgba(60,255,208,0.1); }
         .composer-send-btn { display: inline-flex; align-items: center; justify-content: center; height: 38px; width: 38px; border-radius: 50%; background: var(--ink); color: var(--brand-mint); border: 1px solid var(--ink); cursor: pointer; flex-shrink: 0; transition: transform 0.1s; }
         .composer-send-btn:hover { transform: scale(1.05); }
+        .room-pending-badge { font-size: 10px; font-weight: 700; color: var(--muted); background: rgba(150,150,150,0.12); padding: 3px 8px; border-radius: var(--radius-pill); white-space: nowrap; }
+        .room-pending-count { font-size: 10px; font-weight: 700; color: #fff; background: #f59e0b; min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; padding: 0 4px; }
+        .pending-requests-bar { border-bottom: 1px solid var(--hairline); }
+        .pending-requests-toggle { width: 100%; padding: var(--space-3) var(--space-5); background: transparent; border: none; color: var(--ink); font-size: 12px; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 6px; }
+        .pending-requests-toggle:hover { background: var(--bg-surface-soft); }
+        .pending-requests-panel { padding: 0 var(--space-5) var(--space-3); }
+        .pending-empty { font-size: 12px; color: var(--muted); padding: var(--space-2) 0; }
+        .pending-request-row { display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
+        .pending-request-row:last-child { border-bottom: none; }
+        .pending-request-info { display: flex; flex-direction: column; gap: 2px; }
+        .pending-request-name { font-size: 12px; font-weight: 700; color: var(--ink); }
+        .pending-request-time { font-size: 10px; color: var(--muted); }
+        .pending-request-actions { display: flex; gap: 4px; }
+        .approve-btn, .reject-btn { padding: 3px 8px; border-radius: var(--radius-xs); border: none; font-size: 10px; font-weight: 700; cursor: pointer; }
+        .approve-btn { background: rgba(34,197,94,0.12); color: #22c55e; }
+        .approve-btn:hover { background: rgba(34,197,94,0.25); }
+        .reject-btn { background: rgba(239,68,68,0.12); color: #ef4444; }
+        .reject-btn:hover { background: rgba(239,68,68,0.25); }
+        .pending-notice { padding: var(--space-4) var(--space-6); background: rgba(245,158,11,0.06); border-bottom: 1px solid rgba(245,158,11,0.2); display: flex; align-items: center; gap: var(--space-3); }
+        .pending-notice-icon { font-size: 20px; }
+        .pending-notice-text { font-size: 12px; color: var(--ink); font-weight: 500; }
         @media (max-width: 860px) {
           .chat-grid-layout { grid-template-columns: 1fr; }
           .chat-sidebar { position: fixed; top: 64px; left: 0; bottom: 0; width: 280px; transform: translateX(-100%); z-index: 100; }
