@@ -38,16 +38,50 @@ export default function TokenDetailPage({ params }) {
     let cancelled = false;
     setLoading(true);
     setError('');
-    fetch(`/api/token-info?mint=${encodeURIComponent(mint)}&network=${network}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) {
-          if (data.token) setToken(data.token);
-          else setError('Token data is not available yet.');
-        }
-      })
-      .catch(() => !cancelled && setError('Failed to fetch token data.'))
-      .finally(() => !cancelled && setLoading(false));
+
+    const d1Fetch = fetch(`/api/tokens/${mint}`).then(r => r.ok ? r.json() : null).catch(() => null);
+    const heliusFetch = fetch(`/api/token-info?mint=${encodeURIComponent(mint)}&network=${network}`).then(r => r.ok ? r.json() : null).catch(() => null);
+
+    Promise.all([d1Fetch, heliusFetch]).then(([d1Data, heliusData]) => {
+      if (cancelled) return;
+      const d1 = d1Data?.token;
+      const helius = heliusData?.token;
+
+      if (helius) {
+        setToken({
+          mint,
+          name: d1?.name || helius.name || 'Unknown',
+          symbol: d1?.symbol || helius.symbol || 'N/A',
+          description: d1?.description || helius.description || '',
+          image: d1?.image || helius.image || '',
+          uri: d1?.metadata_uri || helius.uri || '',
+          supply: helius.supply || 0,
+          decimals: helius.decimals || 0,
+          authorities: helius.authorities || [],
+        });
+        if (d1?.follower_count !== undefined) setFollowCount(d1.follower_count);
+      } else if (d1) {
+        setToken({
+          mint,
+          name: d1.name || 'Unknown',
+          symbol: d1.symbol || 'N/A',
+          description: d1.description || '',
+          image: d1.image || '',
+          uri: d1.metadata_uri || '',
+          supply: 0,
+          decimals: d1.decimals || 0,
+          authorities: [],
+        });
+        if (d1.follower_count !== undefined) setFollowCount(d1.follower_count);
+      } else {
+        setError('Token data is not available yet.');
+      }
+    }).catch(() => {
+      if (!cancelled) setError('Failed to fetch token data.');
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+
     return () => { cancelled = true; };
   }, [mint, network]);
 
@@ -56,10 +90,6 @@ export default function TokenDetailPage({ params }) {
     fetch(`/api/follows/status?target_type=token&target_id=${mint}`, { headers: getAuthHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setFollowing(d.following); })
-      .catch(() => {});
-    fetch(`/api/tokens/${mint}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.token?.follower_count !== undefined) setFollowCount(d.token.follower_count); })
       .catch(() => {});
   }, [mint, authToken]);
 
