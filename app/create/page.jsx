@@ -13,7 +13,7 @@ import AuthGuard from '@/app/components/AuthGuard';
 import { useNetwork } from '@/app/providers/NetworkProvider';
 import { useToast } from '@/app/components/Toast';
 import { uploadImage, uploadMetadata } from '@/app/lib/pinata';
-import { createMintTransaction, createMetadataTransaction } from '@/app/lib/createToken';
+import { createMintTransaction, createMetadataTransaction, revokeAuthorities } from '@/app/lib/createToken';
 import { formatNumber } from '@/app/lib/solana';
 import { useAuth } from '@/app/providers/AuthProvider';
 
@@ -88,7 +88,7 @@ export default function CreatePage() {
       });
       token.setMetadataResult(metaResult.uri);
 
-      // Step 3: Build & send mint transaction
+      // Step 3: Build & send mint transaction (NO authority revocation yet)
       token.setStatus('building_tx');
 
       const config = {
@@ -97,8 +97,6 @@ export default function CreatePage() {
         uri: metaResult.uri,
         decimals: Number(token.decimals),
         supply: token.supply,
-        revokeMintAuthority: token.revokeMintAuthority,
-        revokeFreezeAuthority: token.revokeFreezeAuthority,
       };
 
       token.setStatus('awaiting_signature');
@@ -135,6 +133,19 @@ export default function CreatePage() {
 
       // Small delay for UX
       await new Promise((r) => setTimeout(r, 1000));
+
+      // Step 5: Revoke authorities (third transaction, AFTER metadata is on-chain)
+      if (token.revokeMintAuthority || token.revokeFreezeAuthority) {
+        token.setStatus('revoking_authorities');
+        await revokeAuthorities(
+          connection,
+          walletProvider,
+          address,
+          mintResult.mintAddress,
+          token.revokeMintAuthority,
+          token.revokeFreezeAuthority
+        );
+      }
 
       // Record token in D1 for My Tokens / social features
       let d1Success = false;

@@ -70,8 +70,8 @@ function createCreateMetadataAccountV3Instruction(mint, name, symbol, uri, payer
 }
 
 /**
- * Transaction 1: Create Token-2022 mint, ATA, mint supply, revoke authorities.
- * This is a simple transaction that simulates and sends without issues.
+ * Transaction 1: Create SPL Token mint, ATA, mint supply.
+ * Authority revocation is done SEPARATELY after metadata creation.
  */
 export async function createMintTransaction(connection, walletProvider, walletAddress, config, treasuryAddress) {
   const payer = new PublicKey(walletAddress);
@@ -131,18 +131,6 @@ export async function createMintTransaction(connection, walletProvider, walletAd
     );
   }
 
-  if (config.revokeMintAuthority) {
-    transaction.add(
-      createSetAuthorityInstruction(mint, payer, AuthorityType.MintTokens, null, [], TOKEN_PROGRAM_ID)
-    );
-  }
-
-  if (config.revokeFreezeAuthority) {
-    transaction.add(
-      createSetAuthorityInstruction(mint, payer, AuthorityType.FreezeAccount, null, [], TOKEN_PROGRAM_ID)
-    );
-  }
-
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = payer;
@@ -182,5 +170,39 @@ export async function createMetadataTransaction(connection, walletProvider, wall
 
   await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
 
+  return { txSignature };
+}
+
+/**
+ * Transaction 3: Revoke mint and/or freeze authority.
+ * Called AFTER metadata creation so the mint authority can still sign for Metaplex.
+ */
+export async function revokeAuthorities(connection, walletProvider, walletAddress, mintAddress, revokeMint, revokeFreeze) {
+  if (!revokeMint && !revokeFreeze) return null;
+  const payer = new PublicKey(walletAddress);
+  const mint = new PublicKey(mintAddress);
+
+  const transaction = new Transaction();
+
+  if (revokeMint) {
+    transaction.add(
+      createSetAuthorityInstruction(mint, payer, AuthorityType.MintTokens, null, [], TOKEN_PROGRAM_ID)
+    );
+  }
+  if (revokeFreeze) {
+    transaction.add(
+      createSetAuthorityInstruction(mint, payer, AuthorityType.FreezeAccount, null, [], TOKEN_PROGRAM_ID)
+    );
+  }
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = payer;
+
+  const txSignature = await walletProvider.sendTransaction(transaction, connection, {
+    skipPreflight: true,
+  });
+
+  await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
   return { txSignature };
 }

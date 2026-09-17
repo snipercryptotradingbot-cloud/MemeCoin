@@ -8,6 +8,7 @@ const STEPS = [
   { label: 'Confirming Mint' },
   { label: 'Adding Metadata' },
   { label: 'Confirming Metadata' },
+  { label: 'Revoking Authorities' },
 ];
 
 const STATUS_TO_STEP = {
@@ -19,6 +20,7 @@ const STATUS_TO_STEP = {
   creating_metadata: 5,
   awaiting_signature_metadata: 6,
   confirming_metadata: 6,
+  revoking_authorities: 7,
 };
 
 export default function ProgressOverlay({ status, error, onRetry, onCancel }) {
